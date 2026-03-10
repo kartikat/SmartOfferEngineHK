@@ -1,0 +1,86 @@
+{
+  "model_type": "propensity",
+  "n_train": 2375,
+  "n_pos": 418,
+  "n_neg": 1957,
+  "scale_pos_weight": 4.682,
+  "auc_cv": 0.5223,
+  "top_features": [
+    [
+      "channel_match",
+      0.12275385111570358
+    ],
+    [
+      "discount_value",
+      0.06563615798950195
+    ],
+    [
+      "category_affinity",
+      0.06310512870550156
+    ],
+    [
+      "points_expiring_next_month",
+      0.06020226329565048
+    ],
+    [
+      "points_gap",
+      0.05568311735987663
+    ],
+    [
+      "days_until_expiry",
+      0.05483008921146393
+    ],
+    [
+      "redemption_rate",
+      0.05481947213411331
+    ],
+    [
+      "current_point_balance",
+      0.05264776200056076
+    ],
+    [
+      "is_j4u_exclusive",
+      0.051463741809129715
+    ],
+    [
+      "churn_risk",
+      0.05038866028189659
+    ],
+    [
+      "days_since_last_txn",
+      0.05022130906581879
+    ],
+    [
+      "gas_rewards",
+      0.04751381650567055
+    ],
+    [
+      "instacart",
+      0.047404997050762177
+    ],
+    [
+      "household_size",
+      0.04711682349443436
+    ],
+    [
+      "is_4uplus",
+      0.0466877706348896
+    ],
+    [
+      "doordash",
+      0.04626121371984482
+    ],
+    [
+      "num_children",
+      0.04262799024581909
+    ],
+    [
+      "uber",
+      0.04063589498400688
+    ],
+    [
+      "is_freshpass_offer",
+      0.0
+    ]
+  ]
+}

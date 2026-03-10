@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="200" height="60">
+  <!-- Background pill -->
+  <rect x="0" y="0" width="200" height="60" rx="8" fill="#00529B"/>
+  <!-- Stylised A mark -->
+  <polygon points="22,48 34,12 46,48" fill="none" stroke="white" stroke-width="4" stroke-linejoin="round"/>
+  <line x1="26" y1="36" x2="42" y2="36" stroke="white" stroke-width="4"/>
+  <!-- Red accent dot -->
+  <circle cx="34" cy="10" r="4" fill="#E31837"/>
+  <!-- Wordmark -->
+  <text x="58" y="28" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700" fill="white">Albertsons</text>
+  <text x="58" y="46" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="400" fill="#A8C8F0">SmartRewards</text>
+</svg>
