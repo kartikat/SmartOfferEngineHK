@@ -6,12 +6,193 @@
 
 ## Project
 **SmartRewards** — AI-powered personalised loyalty offer engine for Albertsons *for U* program.
-- Stack: Python, FastAPI, Streamlit 1.55.0, PostgreSQL 16 (Homebrew)
+- Stack: Python, FastAPI, Streamlit 1.55.0, PostgreSQL 16
 - Purpose: Hackathon demo
 
 ---
 
-## Session 5 — 2026-03-08
+## Session 6 — 2026-03-10
+
+### What was done
+
+#### 1. Feature Engineer UI — Business-friendly feature management page
+- **New Streamlit page**: "Feature Engineer" (sidebar navigation)
+- Business users can now:
+  - View all 19 features organized by category (Customer 11 / Offer 5 / Interaction 3)
+  - See current importance % for each feature (from last training)
+  - **Change target importance %** instead of complex multipliers
+  - Enable/disable features with checkboxes (pre-selected for currently used)
+  - Click **"Apply Changes & Retrain Models"** to train with new emphasis
+  - Watch progress spinner while retraining
+  - See new importance scores after training completes
+
+#### 2. Feature importance visualization
+- **Top section**: Clean table showing all currently used features
+  - Feature name, Standard model %, GR model %
+  - Visible on page load (no expanding needed)
+- **Individual feature sections**: Expandable cards showing:
+  - ✅ or ☐ status icon (in use or available)
+  - Description of what the feature measures
+  - Current % for Standard and GR models (if applicable)
+  - Input field: "Target %" (0–100%)
+  - Auto-calculated multiplier showing what weight will be applied
+  - Info: "New feature — will get importance after training" for unused features
+
+#### 3. Backend infrastructure for feature weights
+- `files/engine/feature_weights.json` — Stores user-specified target importance multipliers
+- `load_feature_weights()` in scoring_ml_split.py — Reads weights on startup
+- `build_features()` updated to apply weights: `feature_value × weight`
+- Weights applied **only during training**, not during scoring/inference
+- Models retrain on weighted features, new importance recalculated
+
+#### 4. Feature selection & tracking
+- Read current FEATURE_COLS from `scoring_ml_split.py` using regex
+- Track changes: added features, removed features, adjusted importance
+- Summary display with visual indicators:
+  - ⚠️ "Removing X feature(s): `feat1`, `feat2`"
+  - ✅ "Adding X new feature(s): `feat3`, `feat4`"
+  - 🎯 "Adjusting importance for: ↑ `feat5`: 4.2% → 12.0%"
+- Minimum 5 features enforced (validation)
+- Disable Apply button if < 5 features selected
+
+#### 5. Encoding fixes
+- Added `encoding='utf-8'` to all file operations in Feature Engineer
+  - `read_feature_cols()` — reads scoring_ml_split.py
+  - `write_feature_cols()` — writes modified FEATURE_COLS back
+  - `load_feature_weights()` — loads from feature_weights.json
+- Fixes Windows UnicodeDecodeError ('charmap' codec can't decode)
+
+#### 6. Retraining trigger
+- UI collects feature selections and weights
+- Saves weights to `feature_weights.json`
+- Calls subprocess: `python files/engine/scoring_ml_split.py --retrain`
+- Subprocess loads weights, retrains both models with custom emphasis
+- Updates database with 1,800 new scores per model
+- Writes new feature importance to `model_metadata_split.json`
+- UI clears caches and shows success message
+
+---
+
+## Current State
+
+**Feature Engineer page fully functional.** Users can now adjust which features matter to the propensity models without touching code.
+
+```
+Feature Engineer UI:
+  ├─ View current features & importance (19 features, two models)
+  ├─ Adjust target % for any feature
+  ├─ Remove/add features with checkboxes
+  └─ Click Apply → retrain both models with custom weights
+
+Backend:
+  ├─ read_feature_cols() — parse FEATURE_COLS from scoring_ml_split.py
+  ├─ load_feature_weights() — read user preferences from JSON
+  ├─ build_features(..., feature_weights) — apply weights during training
+  └─ write_feature_cols() — update source code with new feature list
+```
+
+**Models**: propensity_standard (AUC 0.653), propensity_gr (AUC 0.582)
+**Features**: 19 total, all adjustable via UI (currently all enabled)
+
+---
+
+## Files Modified
+
+- `files/app.py` — Added ~400 lines:
+  - `read_feature_cols()` — Parse FEATURE_COLS with regex
+  - `get_feature_categories()` — Return feature metadata + descriptions
+  - `get_feature_importance()` — Extract importance from model_metadata
+  - `write_feature_cols()` — Modify FEATURE_COLS in source via regex
+  - `render_feature_engineer()` — Main UI page with all interactions
+  - Navigation updated to include "Feature Engineer"
+  - Page routing added for new page
+
+- `files/engine/scoring_ml_split.py` — Added ~40 lines:
+  - `load_feature_weights()` — Load JSON preferences
+  - `build_features(..., feature_weights)` — Apply weights to features
+  - `build_training_data_split(..., feature_weights)` — Pass weights to feature builder
+  - `run(...)` — Load weights on startup, pass through pipeline
+
+- `files/engine/feature_weights.json` — NEW, created on first Apply
+
+---
+
+## How to Use
+
+1. **Start Streamlit app** (already running):
+   ```bash
+   streamlit run files/app.py
+   ```
+
+2. **Navigate to Feature Engineer** (sidebar menu)
+
+3. **View current features** — See importance table at top
+
+4. **Adjust any feature**:
+   - Expand feature card
+   - Check/uncheck to enable/disable
+   - Enter new target % (0–100%)
+   - See auto-calculated multiplier
+
+5. **Click Apply & Retrain**:
+   - Feature selection saved to `FEATURE_COLS`
+   - Weights saved to `feature_weights.json`
+   - Models retrain (2–5 minutes)
+   - New scores written to database
+   - UI refreshes with new importance
+
+---
+
+## Testing Checklist
+
+- ✅ Feature Engineer page loads without errors
+- ✅ Currently used features display in table (19 features)
+- ✅ Checkboxes pre-selected for currently used features
+- ✅ Can uncheck and set target %
+- ✅ Change summary shows added/removed/adjusted features
+- ✅ Apply button disabled if < 5 features
+- ✅ Weights saved to JSON
+- ✅ Models retrain successfully
+- ✅ New scores written to database
+- ✅ Feature importance updates in metadata
+- ✅ UI auto-refreshes after retraining
+- ⏳ **Next**: Test with real weight adjustments (e.g., boost discount_value, reduce channel_match)
+
+---
+
+## Known Limitations
+
+1. **Feature weighting is multiplicative** — If a feature currently has 0% importance in a model, it can't be boosted past 0% (multiply by infinity doesn't help). Workaround: Add it as a new feature and train from scratch.
+
+2. **No feature statistics** — UI doesn't show statistical significance, p-values, or correlation with targets. Purely experimentation-based.
+
+3. **Long retraining** — Full retrain takes 2–5 minutes. No incremental learning. UI shows spinner but doesn't stream live logs.
+
+4. **No A/B testing** — Can't run two configurations in parallel. Need to fully retrain to compare.
+
+---
+
+## Next Steps
+
+**Phase 5 ideas:**
+1. Add ability to create new synthetic features (formula builder)
+2. Show feature correlations / collinearity detection
+3. A/B test framework: save model snapshots, compare live
+4. Feature interaction analysis (which feature pairs work best together?)
+5. Automated feature optimization (genetic algorithm to find best weights)
+
+---
+
+## Resume Command
+
+```bash
+cd c:\Users\ktang06\SmartOfferEngineHK
+$env:PYTHONIOENCODING = "utf-8"
+$env:DATABASE_URL = "postgresql://postgres@localhost/smartrewards"
+python -m streamlit run files/app.py
+```
+
+Navigate to **Feature Engineer** page to manage models without code. 🚀
 
 ### What was done
 

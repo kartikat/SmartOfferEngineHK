@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import create_engine, text
 
-DB_URL = os.getenv("DATABASE_URL", "postgresql://localhost/smartrewards")
+DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres@localhost/smartrewards")
 engine = create_engine(DB_URL, pool_pre_ping=True)
 
 app = FastAPI(

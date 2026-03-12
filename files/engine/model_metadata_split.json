@@ -1,0 +1,175 @@
+{
+  "trained_at": "2026-03-10T13:53:04.606337",
+  "propensity_standard": {
+    "model_type": "propensity_standard",
+    "n_train": 1167,
+    "n_pos": 229,
+    "n_neg": 938,
+    "scale_pos_weight": 4.096,
+    "auc_cv": 0.6531,
+    "top_features": [
+      [
+        "channel_match",
+        0.16325193643569946
+      ],
+      [
+        "points_expiring_next_month",
+        0.06689928472042084
+      ],
+      [
+        "category_affinity",
+        0.06241495907306671
+      ],
+      [
+        "points_gap",
+        0.058802079409360886
+      ],
+      [
+        "instacart",
+        0.05509592965245247
+      ],
+      [
+        "redemption_rate",
+        0.05441024899482727
+      ],
+      [
+        "is_4uplus",
+        0.054279591888189316
+      ],
+      [
+        "current_point_balance",
+        0.053966496139764786
+      ],
+      [
+        "uber",
+        0.047929923981428146
+      ],
+      [
+        "days_since_last_txn",
+        0.04568949341773987
+      ],
+      [
+        "days_until_expiry",
+        0.04494475573301315
+      ],
+      [
+        "is_j4u_exclusive",
+        0.04459821805357933
+      ],
+      [
+        "doordash",
+        0.04439520835876465
+      ],
+      [
+        "churn_risk",
+        0.0427280031144619
+      ],
+      [
+        "discount_value",
+        0.0419669933617115
+      ],
+      [
+        "household_size",
+        0.04194871708750725
+      ],
+      [
+        "num_children",
+        0.03892607241868973
+      ],
+      [
+        "gas_rewards",
+        0.03775210678577423
+      ],
+      [
+        "is_freshpass_offer",
+        0.0
+      ]
+    ]
+  },
+  "propensity_gr": {
+    "model_type": "propensity_gr",
+    "n_train": 1208,
+    "n_pos": 189,
+    "n_neg": 1019,
+    "scale_pos_weight": 5.392,
+    "auc_cv": 0.5817,
+    "top_features": [
+      [
+        "discount_value",
+        0.10785707831382751
+      ],
+      [
+        "points_gap",
+        0.06632453948259354
+      ],
+      [
+        "channel_match",
+        0.0661138966679573
+      ],
+      [
+        "points_expiring_next_month",
+        0.06422469019889832
+      ],
+      [
+        "days_since_last_txn",
+        0.06368328630924225
+      ],
+      [
+        "num_children",
+        0.06178342178463936
+      ],
+      [
+        "category_affinity",
+        0.060031864792108536
+      ],
+      [
+        "churn_risk",
+        0.057876624166965485
+      ],
+      [
+        "redemption_rate",
+        0.05584950000047684
+      ],
+      [
+        "is_4uplus",
+        0.05564790591597557
+      ],
+      [
+        "gas_rewards",
+        0.052306342869997025
+      ],
+      [
+        "doordash",
+        0.051846764981746674
+      ],
+      [
+        "current_point_balance",
+        0.05068107321858406
+      ],
+      [
+        "household_size",
+        0.04979906603693962
+      ],
+      [
+        "days_until_expiry",
+        0.04953806847333908
+      ],
+      [
+        "instacart",
+        0.04783022403717041
+      ],
+      [
+        "uber",
+        0.03860560059547424
+      ],
+      [
+        "is_j4u_exclusive",
+        0.0
+      ],
+      [
+        "is_freshpass_offer",
+        0.0
+      ]
+    ]
+  }
+}

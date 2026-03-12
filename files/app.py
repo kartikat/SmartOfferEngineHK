@@ -14,7 +14,7 @@ from sqlalchemy import create_engine, text
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
-DB_URL = os.getenv("DATABASE_URL", "postgresql://localhost/smartrewards")
+DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres@localhost/smartrewards")
 _engine = create_engine(DB_URL, pool_pre_ping=True)
 
 def _logo_b64() -> str:
@@ -323,12 +323,31 @@ def load_scored() -> pd.DataFrame:
 
 
 def load_model_metadata() -> dict:
-    meta_path = os.path.join(os.path.dirname(__file__), "engine", "model_metadata.json")
-    try:
-        with open(meta_path) as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
+    """Load both unified and split propensity model metadata."""
+    meta = {}
+    
+    # Try to load split model metadata (new)
+    split_path = os.path.join(os.path.dirname(__file__), "engine", "model_metadata_split.json")
+    if os.path.exists(split_path):
+        try:
+            with open(split_path) as f:
+                split_meta = json.load(f)
+                meta["propensity_standard"] = split_meta.get("propensity_standard", {})
+                meta["propensity_gr"] = split_meta.get("propensity_gr", {})
+        except:
+            pass
+    
+    # Try to load old unified metadata (for backwards compatibility)
+    old_path = os.path.join(os.path.dirname(__file__), "engine", "model_metadata.json")
+    if os.path.exists(old_path):
+        try:
+            with open(old_path) as f:
+                old_meta = json.load(f)
+                meta["propensity"] = old_meta
+        except:
+            pass
+    
+    return meta
 
 
 @st.cache_data(ttl=300)
@@ -593,7 +612,7 @@ def page_dashboard():
         nav = st.radio(
             "Navigate",
             ["My Offers", "My Rewards", "My Clipped Offers", "My Profile", "Segment Explorer",
-             "Compare Customers", "Compare Models", "How Offers Are Scored", "Demo Script"],
+             "Compare Customers", "Compare Models", "How Offers Are Scored", "Feature Engineer", "Demo Script"],
             label_visibility="collapsed"
         )
         st.markdown("---")
@@ -622,6 +641,8 @@ def page_dashboard():
         render_model_comparison(hid)
     elif nav == "How Offers Are Scored":
         render_allocation_criteria()
+    elif nav == "Feature Engineer":
+        render_feature_engineer()
     elif nav == "Demo Script":
         render_demo_script()
     else:
@@ -688,26 +709,46 @@ def render_offers(customer: dict, hid: str):
     # Model toggle
     model_choice = st.radio(
         "Scoring model",
-        ["📋 Rule-Based", "🤖 Propensity (XGBoost)"],
+        ["📋 Rule-Based", "🤖 Propensity (Standard)", "🎯 Propensity (GR)"],
         horizontal=True,
         label_visibility="collapsed",
     )
-    selected_model = "rule_based" if "Rule-Based" in model_choice else "propensity"
+    
+    if "Rule-Based" in model_choice:
+        selected_model = "rule_based"
+    elif "(Standard)" in model_choice:
+        selected_model = "propensity_standard"
+    else:
+        selected_model = "propensity_gr"
 
-    if selected_model == "propensity":
-        meta = load_model_metadata()
-        if meta:
-            st.html(f"""
-            <div style="background:#EEF2FF; border:1px solid #C7D2FE; border-radius:8px;
-                        padding:10px 16px; margin-bottom:12px; font-size:0.85rem;">
-                🤖 <b>XGBoost Propensity Model</b> &nbsp;|&nbsp;
-                Trained on <b>{meta.get('n_train', '—')}</b> clip events
-                ({meta.get('n_pos', '—')} redeemed / {meta.get('n_neg', '—')} not redeemed)
-                &nbsp;|&nbsp; CV AUC: <b>{meta.get('auc_cv', '—')}</b>
-                &nbsp;|&nbsp; Top signals:
-                <b>{', '.join(f[0].replace('_', ' ') for f in meta.get('top_features', [])[:3])}</b>
-            </div>
-            """)
+    meta = load_model_metadata()
+
+    if selected_model == "propensity_standard" and "propensity_standard" in meta:
+        meta_data = meta["propensity_standard"]
+        st.html(f"""
+        <div style="background:#EEF2FF; border:1px solid #C7D2FE; border-radius:8px;
+                    padding:10px 16px; margin-bottom:12px; font-size:0.85rem;">
+            🤖 <b>XGBoost Propensity (Standard Offers)</b> &nbsp;|&nbsp;
+            Trained on <b>{meta_data.get('n_train', '—')}</b> offer pairs
+            ({meta_data.get('n_pos', '—')} redeemed / {meta_data.get('n_neg', '—')} not redeemed)
+            &nbsp;|&nbsp; CV AUC: <b>{meta_data.get('auc_cv', '—')}</b>
+            &nbsp;|&nbsp; Top signals:
+            <b>{', '.join(f[0].replace('_', ' ') for f in meta_data.get('top_features', [])[:3])}</b>
+        </div>
+        """)
+    elif selected_model == "propensity_gr" and "propensity_gr" in meta:
+        meta_data = meta["propensity_gr"]
+        st.html(f"""
+        <div style="background:#F0FDF4; border:1px solid #BBDBB5; border-radius:8px;
+                    padding:10px 16px; margin-bottom:12px; font-size:0.85rem;">
+            🎯 <b>XGBoost Propensity (Grocery Reward)</b> &nbsp;|&nbsp;
+            Trained on <b>{meta_data.get('n_train', '—')}</b> offer pairs
+            ({meta_data.get('n_pos', '—')} redeemed / {meta_data.get('n_neg', '—')} not redeemed)
+            &nbsp;|&nbsp; CV AUC: <b>{meta_data.get('auc_cv', '—')}</b>
+            &nbsp;|&nbsp; Top signals:
+            <b>{', '.join(f[0].replace('_', ' ') for f in meta_data.get('top_features', [])[:3])}</b>
+        </div>
+        """)
     else:
         st.html("""
         <div style="background:#F0F9FF; border:1px solid #BAE6FD; border-radius:8px;
@@ -727,14 +768,22 @@ def render_offers(customer: dict, hid: str):
     with col2:
         top_n = st.slider("Number of Offers", min_value=1, max_value=10, value=5)
     with col3:
-        show_scores = st.toggle("Show Score Breakdown", value=False,
-                                disabled=(selected_model == "propensity"))
+        # Only show toggle for rule-based model
+        if selected_model == "rule_based":
+            show_scores = st.toggle("Show Score Breakdown", value=False)
+        else:
+            show_scores = False
+            st.caption("*(ML models don't show breakdowns)*")
 
+    # Filter by model type
     cust_offers = scored_df[
         (scored_df["household_id"] == hid) &
-        (scored_df["model_type"] == selected_model) &
-        (scored_df["program_type"] != "Grocery Reward")
+        (scored_df["model_type"] == selected_model)
     ].copy()
+    
+    # Exclude GR offers only for standard and rule-based models, not for the GR model itself
+    if selected_model != "propensity_gr":
+        cust_offers = cust_offers[cust_offers["program_type"] != "Grocery Reward"].copy()
     if channel_filter != "All Channels":
         cust_offers = cust_offers[cust_offers["delivery_channel_cd"] == channel_filter]
     cust_offers = cust_offers.sort_values("score", ascending=False).head(top_n)
@@ -814,7 +863,8 @@ def render_offers(customer: dict, hid: str):
                     st.rerun()
 
         if show_scores:
-            with st.expander(f"Score breakdown — {row['offer_dsc']}"):
+            with st.expander(f"📊 Score breakdown for this offer", open=False):
+                st.markdown("**How the rule-based engine scored this offer:**")
                 labels = {
                     "transaction_affinity": ("Transaction Affinity", "30%", "Historical spend in this category"),
                     "redemption_match":     ("Redemption Match",     "25%", "Channel alignment with your preference"),
@@ -822,12 +872,23 @@ def render_offers(customer: dict, hid: str):
                     "cart_affinity":        ("Cart / Browse Affinity","15%", "Based on your online shopping activity"),
                     "demographic_match":    ("Demographic Match",    "10%", "Profile fit for this offer type"),
                 }
+                col_a, col_b, col_c = st.columns([3, 1, 1.2])
+                with col_a:
+                    st.markdown("**Factor**")
+                with col_b:
+                    st.markdown("**Weight**")
+                with col_c:
+                    st.markdown("**Your Score**")
+                st.divider()
                 for key, (label, weight, desc) in labels.items():
                     val = float(row[key])
-                    c1, c2, c3 = st.columns([3, 1, 1])
-                    c1.markdown(f"**{label}** — *{desc}*")
-                    c2.markdown(f"Weight: `{weight}`")
-                    c3.progress(val, text=f"{val:.2f}")
+                    c1, c2, c3 = st.columns([3, 1, 1.2])
+                    with c1:
+                        st.caption(f"**{label}**  \n*{desc}*")
+                    with c2:
+                        st.markdown(f"`{weight}`")
+                    with c3:
+                        st.progress(val, text=f"{val:.1%}")
 
     # ── Grocery Rewards teaser / Auto Clip status ─────────────────────────────
     balance = customer.get("current_point_balance", 0) or 0
@@ -1109,20 +1170,23 @@ def render_model_comparison(hid: str):
 
     meta = load_model_metadata()
 
-    col_rb, col_ml = st.columns(2)
+    col_rb, col_std, col_gr = st.columns(3)
 
+    # ─── RULE-BASED COLUMN ────
     with col_rb:
         st.html("""<div style="background:#F0F9FF; border:1px solid #BAE6FD;
                     border-radius:8px; padding:10px 14px; margin-bottom:12px;">
                     <b>📋 Rule-Based Engine</b><br>
                     <span style="font-size:0.82rem; color:#555;">
-                    5 manually-weighted rules. No learning from data.
-                    Same weights for every customer.</span></div>""")
+                    5 manually-weighted rules. No learning from data.</span></div>""")
 
         rb_offers = scored_df[
             (scored_df["household_id"] == hid) &
             (scored_df["model_type"] == "rule_based")
         ].sort_values("rank")
+
+        rb_rank = {row["client_offer_id"]: int(row["rank"])
+                   for _, row in rb_offers.iterrows()}
 
         for _, row in rb_offers.iterrows():
             st.html(f"""
@@ -1132,37 +1196,35 @@ def render_model_comparison(hid: str):
                 <div>
                     <span style="color:#64748B; font-size:0.78rem; font-weight:700;">
                         #{int(row['rank'])}</span>
-                    &nbsp;<span style="font-size:0.88rem;">{row['offer_dsc']}</span>
-                    &nbsp;{channel_pill(row['delivery_channel_cd'])}
+                    &nbsp;<span style="font-size:0.88rem;">{row['offer_dsc'][:20]}</span>
                 </div>
                 <span style="font-weight:700; color:{BLUE}; font-size:0.9rem;">
                     {row['score']:.1f}</span>
             </div>""")
 
-    with col_ml:
-        auc_txt = f"CV AUC: {meta['auc_cv']}" if meta else ""
-        st.html(f"""<div style="background:#F5F3FF; border:1px solid #DDD6FE;
+    # ─── PROPENSITY STANDARD COLUMN ────
+    with col_std:
+        auc_txt = f"CV AUC: {meta.get('propensity_standard', {}).get('auc_cv', '—')}"
+        st.html(f"""<div style="background:#EEF2FF; border:1px solid #C7D2FE;
                     border-radius:8px; padding:10px 14px; margin-bottom:12px;">
-                    <b>🤖 Propensity Model (XGBoost)</b><br>
+                    <b>🤖 Propensity (Standard)</b><br>
                     <span style="font-size:0.82rem; color:#555;">
-                    Trained on {meta.get('n_train','—')} clip events. {auc_txt}.
-                    Learns patterns the rules can't capture.</span></div>""")
+                    Trained on {meta.get('propensity_standard', {}).get('n_train','—')} offers. {auc_txt}.</span></div>""")
 
-        ml_offers = scored_df[
+        std_offers = scored_df[
             (scored_df["household_id"] == hid) &
-            (scored_df["model_type"] == "propensity")
+            (scored_df["model_type"] == "propensity_standard")
         ].sort_values("rank")
 
-        # Build rank lookup from rule-based for delta display
-        rb_rank = {row["client_offer_id"]: int(row["rank"])
-                   for _, row in rb_offers.iterrows()}
+        std_rank = {row["client_offer_id"]: int(row["rank"])
+                    for _, row in std_offers.iterrows()}
 
-        for _, row in ml_offers.iterrows():
+        for _, row in std_offers.iterrows():
             oid = row["client_offer_id"]
-            ml_rank = int(row["rank"])
+            std_r = int(row["rank"])
             rb_r = rb_rank.get(oid)
             if rb_r is not None:
-                delta = rb_r - ml_rank
+                delta = rb_r - std_r
                 if delta > 0:
                     delta_html = f'<span style="color:#16A34A; font-size:0.75rem;">▲{delta}</span>'
                 elif delta < 0:
@@ -1174,29 +1236,89 @@ def render_model_comparison(hid: str):
 
             st.html(f"""
             <div style="padding:8px 12px; margin-bottom:6px; border-radius:6px;
-                        background:#FAF5FF; border:1px solid #E9D5FF;
+                        background:#F0F4FF; border:1px solid #D9E5FF;
                         display:flex; justify-content:space-between; align-items:center;">
                 <div>
-                    <span style="color:#7C3AED; font-size:0.78rem; font-weight:700;">
-                        #{ml_rank}</span>
-                    &nbsp;<span style="font-size:0.88rem;">{row['offer_dsc']}</span>
-                    &nbsp;{channel_pill(row['delivery_channel_cd'])}
+                    <span style="color:#4F46E5; font-size:0.78rem; font-weight:700;">
+                        #{std_r}</span>
+                    &nbsp;<span style="font-size:0.88rem;">{row['offer_dsc'][:20]}</span>
                     &nbsp;{delta_html}
                 </div>
-                <span style="font-weight:700; color:#7C3AED; font-size:0.9rem;">
+                <span style="font-weight:700; color:#4F46E5; font-size:0.9rem;">
                     {row['score']:.1f}</span>
             </div>""")
 
-    if meta and meta.get("top_features"):
-        st.markdown("---")
-        st.markdown("#### 🔍 What XGBoost learned — top feature importances")
-        cols = st.columns(len(meta["top_features"][:6]))
-        for col, (feat, imp) in zip(cols, meta["top_features"][:6]):
-            col.metric(feat.replace("_", " ").title(), f"{imp:.3f}")
+    # ─── PROPENSITY GR COLUMN ────
+    with col_gr:
+        auc_txt_gr = f"CV AUC: {meta.get('propensity_gr', {}).get('auc_cv', '—')}"
+        st.html(f"""<div style="background:#F0FDF4; border:1px solid #BBDBB5;
+                    border-radius:8px; padding:10px 14px; margin-bottom:12px;">
+                    <b>🎯 Propensity (GR)</b><br>
+                    <span style="font-size:0.82rem; color:#555;">
+                    Trained on {meta.get('propensity_gr', {}).get('n_train','—')} offers. {auc_txt_gr}.</span></div>""")
+
+        gr_offers = scored_df[
+            (scored_df["household_id"] == hid) &
+            (scored_df["model_type"] == "propensity_gr")
+        ].sort_values("rank")
+
+        gr_rank = {row["client_offer_id"]: int(row["rank"])
+                   for _, row in gr_offers.iterrows()}
+
+        for _, row in gr_offers.iterrows():
+            oid = row["client_offer_id"]
+            gr_r = int(row["rank"])
+            rb_r = rb_rank.get(oid)
+            if rb_r is not None:
+                delta = rb_r - gr_r
+                if delta > 0:
+                    delta_html = f'<span style="color:#16A34A; font-size:0.75rem;">▲{delta}</span>'
+                elif delta < 0:
+                    delta_html = f'<span style="color:#DC2626; font-size:0.75rem;">▼{abs(delta)}</span>'
+                else:
+                    delta_html = '<span style="color:#94A3B8; font-size:0.75rem;">—</span>'
+            else:
+                delta_html = '<span style="color:#94A3B8; font-size:0.75rem;">new</span>'
+
+            st.html(f"""
+            <div style="padding:8px 12px; margin-bottom:6px; border-radius:6px;
+                        background:#FAFCE8; border:1px solid #D9E5A0;
+                        display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <span style="color:#7C7016; font-size:0.78rem; font-weight:700;">
+                        #{gr_r}</span>
+                    &nbsp;<span style="font-size:0.88rem;">{row['offer_dsc'][:20]}</span>
+                    &nbsp;{delta_html}
+                </div>
+                <span style="font-weight:700; color:#7C7016; font-size:0.9rem;">
+                    {row['score']:.1f}</span>
+            </div>""")
+
+    # ─── FEATURE IMPORTANCE COMPARISON ────
+    st.markdown("---")
+    st.markdown("#### 🔍 Feature Importance — What Each Model Learned")
+    
+    fi_col1, fi_col2, fi_col3 = st.columns(3)
+    
+    with fi_col1:
+        st.markdown("**📋 Rule-Based**")
+        st.caption("No learning — rules are pre-defined by team")
+    
+    with fi_col2:
+        st.markdown("**🤖 Propensity (Standard)**")
+        if meta.get("propensity_standard", {}).get("top_features"):
+            for feat, imp in meta["propensity_standard"]["top_features"][:5]:
+                st.caption(f"• {feat.replace('_', ' ').title()}: {imp:.3f}")
+    
+    with fi_col3:
+        st.markdown("**🎯 Propensity (GR)**")
+        if meta.get("propensity_gr", {}).get("top_features"):
+            for feat, imp in meta["propensity_gr"]["top_features"][:5]:
+                st.caption(f"• {feat.replace('_', ' ').title()}: {imp:.3f}")
 
     st.markdown("---")
     st.caption(
-        "▲ green = ranked higher by propensity model vs rule-based &nbsp;|&nbsp;"
+        "▲ green = ranked higher vs rule-based &nbsp;|&nbsp;"
         "▼ red = ranked lower &nbsp;|&nbsp; — = same rank"
     )
 
@@ -1687,6 +1809,387 @@ def page_segments():
     """)
 
     render_segments()
+
+
+# ─── FEATURE ENGINEER (Business-Friendly UI) ─────────────────────────────────
+
+def read_feature_cols():
+    """Read FEATURE_COLS from scoring_ml_split.py"""
+    import re
+    scoring_file = os.path.join(os.path.dirname(__file__), "engine", "scoring_ml_split.py")
+    with open(scoring_file, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    # Extract FEATURE_COLS list
+    match = re.search(r'FEATURE_COLS = \[(.*?)\]', content, re.DOTALL)
+    if not match:
+        return []
+    
+    features_str = match.group(1)
+    features = []
+    for line in features_str.split('\n'):
+        line = line.strip()
+        if line and not line.startswith('#'):
+            # Clean up the string
+            feature = line.strip(',').strip('"').strip("'")
+            if feature:
+                features.append(feature)
+    return features
+
+
+def get_feature_categories():
+    """Return ALL feature categories with their descriptions"""
+    current_features = read_feature_cols()
+    
+    customer_features = [
+        ("current_point_balance", "Points available to customer"),
+        ("points_expiring_next_month", "Urgent points (expiry urgency signal)"),
+        ("is_4uplus", "Premium tier status (4U+)"),
+        ("gas_rewards", "Fuel rewards participation (6m)"),
+        ("doordash", "DoorDash adoption signal"),
+        ("instacart", "InstaCart adoption signal"),
+        ("uber", "Uber adoption signal"),
+        ("household_size", "Number of people in household"),
+        ("num_children", "Presence of children"),
+        ("churn_risk", "Predicted churn probability"),
+        ("days_since_last_txn", "Days since last purchase (recency)"),
+    ]
+    
+    offer_features = [
+        ("discount_value", "Dollar amount or item value"),
+        ("is_j4u_exclusive", "J4U exclusive offer flag"),
+        ("is_freshpass_offer", "FreshPass subscription required"),
+        ("redemption_rate", "Historical redemption % for offer"),
+        ("days_until_expiry", "Days until offer expires"),
+    ]
+    
+    interaction_features = [
+        ("channel_match", "Does channel match customer preference?"),
+        ("category_affinity", "Historical spend in this category"),
+        ("points_gap", "Distance above GR tier threshold"),
+    ]
+    
+    return {
+        "Customer": customer_features,
+        "Offer": offer_features,
+        "Interaction": interaction_features,
+    }, current_features
+
+
+def get_feature_importance():
+    """Get feature importance from model metadata"""
+    meta = load_model_metadata()
+    
+    importance = {}
+    
+    # Standard model importance
+    if "propensity_standard" in meta and "top_features" in meta["propensity_standard"]:
+        for feat, imp in meta["propensity_standard"]["top_features"]:
+            importance[feat] = {"standard": imp, "gr": None}
+    
+    # GR model importance
+    if "propensity_gr" in meta and "top_features" in meta["propensity_gr"]:
+        for feat, imp in meta["propensity_gr"]["top_features"]:
+            if feat in importance:
+                importance[feat]["gr"] = imp
+            else:
+                importance[feat] = {"standard": None, "gr": imp}
+    
+    return importance
+
+
+def write_feature_cols(selected_features):
+    """Write modified FEATURE_COLS back to scoring_ml_split.py"""
+    import re
+    
+    scoring_file = os.path.join(os.path.dirname(__file__), "engine", "scoring_ml_split.py")
+    
+    with open(scoring_file, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    # Build new FEATURE_COLS
+    new_cols = "FEATURE_COLS = [\n"
+    new_cols += "    # Customer\n"
+    customer_feats = [f for f in selected_features if f in [
+        "current_point_balance", "points_expiring_next_month", "is_4uplus", "gas_rewards",
+        "doordash", "instacart", "uber", "household_size", "num_children", "churn_risk",
+        "days_since_last_txn"
+    ]]
+    new_cols += ",\n    ".join([f'"{f}"' for f in customer_feats])
+    
+    new_cols += "\n    # Offer\n"
+    offer_feats = [f for f in selected_features if f in [
+        "discount_value", "is_j4u_exclusive", "is_freshpass_offer", "redemption_rate",
+        "days_until_expiry"
+    ]]
+    new_cols += ", " + ",\n    ".join([f'"{f}"' for f in offer_feats])
+    
+    new_cols += "\n    # Interaction\n"
+    interaction_feats = [f for f in selected_features if f in [
+        "channel_match", "category_affinity", "points_gap"
+    ]]
+    new_cols += ", " + ",\n    ".join([f'"{f}"' for f in interaction_feats])
+    
+    new_cols += ",\n]"
+    
+    # Replace in file
+    pattern = r'FEATURE_COLS = \[.*?\]'
+    new_content = re.sub(pattern, new_cols, content, flags=re.DOTALL)
+    
+    with open(scoring_file, 'w', encoding='utf-8') as f:
+        f.write(new_content)
+    
+    return True
+
+
+def render_feature_engineer():
+    """Business-friendly UI for managing propensity model features"""
+    st.markdown("# 🔧 Feature Engineer")
+    st.markdown("Customize features: add/remove, and adjust their importance weights.")
+    
+    categories, current_features = get_feature_categories()
+    feature_importance = get_feature_importance()
+    
+    st.markdown("---")
+    
+    # Show current model performance
+    meta = load_model_metadata()
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        auc_std = meta.get("propensity_standard", {}).get("auc_cv", "—")
+        st.metric("Propensity (Standard) AUC", f"{auc_std:.4f}" if isinstance(auc_std, float) else auc_std)
+    with col2:
+        auc_gr = meta.get("propensity_gr", {}).get("auc_cv", "—")
+        st.metric("Propensity (GR) AUC", f"{auc_gr:.4f}" if isinstance(auc_gr, float) else auc_gr)
+    with col3:
+        n_features = len(current_features)
+        st.metric("Total Features", n_features)
+    
+    st.markdown("---")
+    st.markdown("### 🎚️ Feature Weight Multipliers")
+    st.caption("Adjust how influential each feature is during training (1.0 = normal, 0.5 = half, 2.0 = double)")
+    
+    st.markdown("---")
+    st.markdown("### 🎯 Adjust Feature Importance")
+    st.caption("✅ = Currently used  |  ☐ = Not used (can add)")
+    
+    selected_features = []
+    feature_weights = {}
+    changes_summary = {"added": [], "removed": [], "adjusted": []}
+    
+    for category, features in categories.items():
+        if not features:
+            continue
+        
+        st.markdown(f"### {category} Features")
+        
+        for feat_name, feat_desc in features:
+            # Check if this feature is currently in use
+            is_currently_used = feat_name in current_features
+            
+            # Get importance scores
+            imp = feature_importance.get(feat_name, {"standard": None, "gr": None})
+            current_imp_std = imp['standard'] if imp['standard'] else 0
+            current_imp_gr = imp['gr'] if imp['gr'] else 0
+            
+            # Create expander with status and importance %
+            status_icon = "✅" if is_currently_used else "☐"
+            if is_currently_used and (current_imp_std or current_imp_gr):
+                # Show importance in subtitle for used features
+                imp_display = []
+                if current_imp_std:
+                    imp_display.append(f"Std: {current_imp_std:.1%}")
+                if current_imp_gr:
+                    imp_display.append(f"GR: {current_imp_gr:.1%}")
+                imp_text = " | ".join(imp_display)
+                expander_title = f"{status_icon} **{feat_name}** — {imp_text}"
+            else:
+                expander_title = f"{status_icon} **{feat_name}**"
+            
+            with st.expander(expander_title):
+                st.caption(feat_desc)
+                
+                # Main checkbox - pre-checked if currently used
+                is_checked = st.checkbox(
+                    "Use this feature",
+                    value=is_currently_used,
+                    key=f"feat_{feat_name}"
+                )
+                
+                if is_checked:
+                    selected_features.append(feat_name)
+                    
+                    # Track if this is a new addition
+                    if not is_currently_used:
+                        changes_summary["added"].append(feat_name)
+                    
+                    # Show current vs target importance (only for selected features)
+                    if current_imp_std or current_imp_gr:
+                        st.markdown("**Adjust importance:**")
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            if current_imp_std:
+                                st.metric("Standard Model", f"{current_imp_std:.1%}")
+                                new_imp_std = st.number_input(
+                                    f"Target % (Standard)",
+                                    min_value=0.0,
+                                    max_value=100.0,
+                                    value=float(current_imp_std * 100),
+                                    step=0.1,
+                                    key=f"target_std_{feat_name}",
+                                    label_visibility="collapsed"
+                                ) / 100.0
+                                if new_imp_std != current_imp_std:
+                                    # Calculate multiplier
+                                    multiplier = new_imp_std / current_imp_std if current_imp_std > 0 else 1.0
+                                    feature_weights[feat_name] = multiplier
+                                    changes_summary["adjusted"].append((feat_name, current_imp_std, new_imp_std))
+                                    st.caption(f"📊 Multiplier: **{multiplier:.2f}x**")
+                            else:
+                                st.caption("*(Not used in Standard model)*")
+                        
+                        with col2:
+                            if current_imp_gr:
+                                st.metric("GR Model", f"{current_imp_gr:.1%}")
+                                new_imp_gr = st.number_input(
+                                    f"Target % (GR)",
+                                    min_value=0.0,
+                                    max_value=100.0,
+                                    value=float(current_imp_gr * 100),
+                                    step=0.1,
+                                    key=f"target_gr_{feat_name}",
+                                    label_visibility="collapsed"
+                                ) / 100.0
+                                if new_imp_gr != current_imp_gr:
+                                    # For GR, use the GR multiplier
+                                    multiplier = new_imp_gr / current_imp_gr if current_imp_gr > 0 else 1.0
+                                    feature_weights[feat_name] = multiplier
+                                    changes_summary["adjusted"].append((feat_name, current_imp_gr, new_imp_gr))
+                                    st.caption(f"📊 Multiplier: **{multiplier:.2f}x**")
+                            else:
+                                st.caption("*(Not used in GR model)*")
+                    else:
+                        st.info("ℹ️ New feature — will get importance after training")
+                else:
+                    # Feature is unchecked
+                    if is_currently_used:
+                        changes_summary["removed"].append(feat_name)
+                    feature_weights[feat_name] = 1.0
+    
+    st.markdown("---")
+    
+    # Show what will happen
+    if changes_summary["removed"]:
+        removed_list = ", ".join([f"`{f}`" for f in changes_summary["removed"]])
+        st.warning(f"⚠️ **Removing {len(changes_summary['removed'])} feature(s):**\n{removed_list}")
+    
+    if changes_summary["added"]:
+        added_list = ", ".join([f"`{f}`" for f in changes_summary["added"]])
+        st.success(f"✅ **Adding {len(changes_summary['added'])} new feature(s):**\n{added_list}")
+    
+    if changes_summary["adjusted"]:
+        st.info("🎯 **Adjusting importance for:**")
+        for feat, old_imp, new_imp in changes_summary["adjusted"]:
+            delta = (new_imp - old_imp) * 100  # in percentage points
+            arrow = "↑" if delta > 0 else "↓"
+            st.caption(f"  {arrow} `{feat}`: {old_imp:.1%} → {new_imp:.1%}")
+    
+    if not changes_summary["added"] and not changes_summary["removed"] and not changes_summary["adjusted"]:
+        st.info("ℹ️ No changes to current features")
+    
+    if len(selected_features) < 5:
+        st.error("❌ **Minimum 5 features required for model training**")
+    
+    st.markdown("### How It Works")
+    st.markdown("""
+    1. **View Current Importance** — See what % each feature contributes in the current models
+    2. **Set Target %** — Enter your desired importance (can increase or decrease)
+    3. **See the Adjustment** — Shows the multiplier being applied (e.g., 2.0x to double importance)
+    4. **Retrain** — Click "Apply" to retrain models with your new emphasis
+    5. **New Importance** — After training, see what % the feature actually achieved
+    
+    ✨ Model learns with your custom weights to match your business priorities!
+    """)
+    
+    # Apply button
+    if st.button("🚀 Apply Changes & Retrain Models", type="primary", 
+                 disabled=len(selected_features) < 5):
+        
+        with st.spinner("⏳ Updating files and retraining..."):
+            try:
+                # Write new features to file
+                write_feature_cols(selected_features)
+                st.success("✅ Features updated in scoring_ml_split.py")
+                
+                # Save feature weights to JSON
+                weights_file = os.path.join(os.path.dirname(__file__), "engine", "feature_weights.json")
+                import json
+                with open(weights_file, 'w', encoding='utf-8') as f:
+                    json.dump(feature_weights, f, indent=2)
+                st.success(f"✅ Feature weights saved ({sum(1 for w in feature_weights.values() if w != 1.0)} customized)")
+                
+                # Retrain models
+                import subprocess
+                import sys
+                
+                env = os.environ.copy()
+                env["DATABASE_URL"] = DB_URL
+                env["PYTHONIOENCODING"] = "utf-8"
+                
+                result = subprocess.run(
+                    [sys.executable, os.path.join(os.path.dirname(__file__), "engine", "scoring_ml_split.py"), "--retrain"],
+                    cwd=os.path.dirname(os.path.dirname(__file__)),
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                    timeout=600
+                )
+                
+                if result.returncode == 0:
+                    st.success("✅ Models successfully retrained!")
+                    st.info("📊 Feature importance updated. Refresh to see new metrics.")
+                    
+                    # Clear caches
+                    st.cache_data.clear()
+                    st.toast("🔄 UI caches cleared")
+                else:
+                    st.error(f"❌ Retraining failed:\n{result.stderr}")
+                    
+            except subprocess.TimeoutExpired:
+                st.error("⏱️ Retraining took too long (>10 minutes). Please try again later.")
+            except Exception as e:
+                st.error(f"❌ Error: {str(e)}")
+    
+    st.markdown("---")
+    st.markdown("### Feature Definitions")
+    
+    with st.expander("📚 Full Feature Reference"):
+        st.markdown("""
+        **Customer Features** track customer behavior and attributes:
+        - `current_point_balance`: Loyalty points available
+        - `points_expiring_next_month`: Urgency signal (points about to expire)
+        - `is_4uplus`: Premium tier (0 or 1)
+        - `gas_rewards`: Fuel rewards participation in last 6 months
+        - `doordash`, `instacart`, `uber`: Delivery app adoption
+        - `household_size`: # people in household
+        - `num_children`: Presence of kids
+        - `churn_risk`: Predicted churn score (0–1)
+        - `days_since_last_txn`: Purchase recency
+        
+        **Offer Features** describe the offer:
+        - `discount_value`: $ amount or item value
+        - `is_j4u_exclusive`: J4U only (1) or available to all (0)
+        - `is_freshpass_offer`: Requires FreshPass (1) or not (0)
+        - `redemption_rate`: How often customers redeem %
+        - `days_until_expiry`: Days remaining
+        
+        **Interaction Features** capture customer-offer fit:
+        - `channel_match`: Does customer's preferred channel match offer's channel?
+        - `category_affinity`: Customer's historical spend score in this category
+        - `points_gap`: How far above the Grocery Reward tier threshold?
+        """)
 
 
 # ─── ROUTER ───────────────────────────────────────────────────────────────────

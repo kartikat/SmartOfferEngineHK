@@ -278,7 +278,7 @@ def score_all_pairs(model: xgb.XGBClassifier, customers: pd.DataFrame,
 
 # ─── WRITE ────────────────────────────────────────────────────────────────────
 
-def write_results(scored: pd.DataFrame, metadata: dict):
+def write_results(scored: pd.DataFrame, metadata: dict, model):
     with engine.connect() as conn:
         conn.execute(text("DELETE FROM c360_scored_offers WHERE model_type = 'propensity';"))
         conn.commit()
@@ -330,7 +330,7 @@ def run(force_retrain: bool = False):
     scored = score_all_pairs(model, customers, offers, affinity, freshpass)
 
     print("Writing results...")
-    write_results(scored, metadata)
+    write_results(scored, metadata, model)
 
 
 if __name__ == "__main__":

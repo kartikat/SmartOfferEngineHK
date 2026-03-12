@@ -361,9 +361,11 @@ CREATE TABLE IF NOT EXISTS c360_scored_offers (
     recency_boost_applied       BOOLEAN,
     tier_multiplier_applied     BOOLEAN,
 
+    model_type                  TEXT,           -- 'rule_based' or 'propensity'
+
     scored_at                   TIMESTAMP DEFAULT NOW(),
 
-    PRIMARY KEY (household_id, client_offer_id)
+    PRIMARY KEY (household_id, client_offer_id, model_type)
 );
 
 CREATE INDEX IF NOT EXISTS idx_scored_household ON c360_scored_offers(household_id);
