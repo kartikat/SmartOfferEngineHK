@@ -7,6 +7,7 @@ Run: streamlit run files/app.py
 import base64
 import json
 import os
+import sys
 import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine, text
@@ -325,30 +326,26 @@ def load_scored() -> pd.DataFrame:
 
 
 def load_model_metadata() -> dict:
-    """Load both unified and split propensity model metadata."""
+    """Load propensity model metadata from scoring_ml.py outputs."""
     meta = {}
-    
-    # Try to load split model metadata (new)
-    split_path = os.path.join(os.path.dirname(__file__), "engine", "model_metadata_split.json")
-    if os.path.exists(split_path):
+    engine_dir = os.path.join(os.path.dirname(__file__), "engine")
+
+    std_path = os.path.join(engine_dir, "model_metadata.json")
+    if os.path.exists(std_path):
         try:
-            with open(split_path) as f:
-                split_meta = json.load(f)
-                meta["propensity_standard"] = split_meta.get("propensity_standard", {})
-                meta["propensity_gr"] = split_meta.get("propensity_gr", {})
-        except:
+            with open(std_path) as f:
+                meta["propensity_standard"] = json.load(f)
+        except Exception:
             pass
-    
-    # Try to load old unified metadata (for backwards compatibility)
-    old_path = os.path.join(os.path.dirname(__file__), "engine", "model_metadata.json")
-    if os.path.exists(old_path):
+
+    gr_path = os.path.join(engine_dir, "model_gr_metadata.json")
+    if os.path.exists(gr_path):
         try:
-            with open(old_path) as f:
-                old_meta = json.load(f)
-                meta["propensity"] = old_meta
-        except:
+            with open(gr_path) as f:
+                meta["propensity_gr"] = json.load(f)
+        except Exception:
             pass
-    
+
     return meta
 
 
@@ -2349,354 +2346,300 @@ def page_segments():
 # ─── FEATURE ENGINEER (Business-Friendly UI) ─────────────────────────────────
 
 def read_feature_cols():
-    """Read FEATURE_COLS from scoring_ml_split.py"""
+    """Read FEATURE_COLS_STANDARD and FEATURE_COLS_GR from scoring_ml.py.
+    Returns dict: {"standard": [...], "gr": [...]}.
+    """
     import re
-    scoring_file = os.path.join(os.path.dirname(__file__), "engine", "scoring_ml_split.py")
+    scoring_file = os.path.join(os.path.dirname(__file__), "engine", "scoring_ml.py")
     with open(scoring_file, 'r', encoding='utf-8') as f:
         content = f.read()
-    
-    # Extract FEATURE_COLS list
-    match = re.search(r'FEATURE_COLS = \[(.*?)\]', content, re.DOTALL)
-    if not match:
-        return []
-    
-    features_str = match.group(1)
-    features = []
-    for line in features_str.split('\n'):
-        line = line.strip()
-        if line and not line.startswith('#'):
-            # Clean up the string
-            feature = line.strip(',').strip('"').strip("'")
-            if feature:
-                features.append(feature)
-    return features
+
+    def _extract(var_name):
+        match = re.search(rf'{var_name}\s*=\s*\[(.*?)\]', content, re.DOTALL)
+        if not match:
+            return []
+        features = []
+        for line in match.group(1).split('\n'):
+            line = line.strip().strip(',')
+            if not line or line.startswith('#'):
+                continue
+            # handle comma-separated on one line e.g. "a", "b",
+            for token in line.split(','):
+                token = token.strip().strip('"').strip("'")
+                if token:
+                    features.append(token)
+        return features
+
+    return {
+        "standard": _extract("FEATURE_COLS_STANDARD"),
+        "gr": _extract("FEATURE_COLS_GR"),
+    }
 
 
 def get_feature_categories():
-    """Return ALL feature categories with their descriptions"""
-    current_features = read_feature_cols()
-    
-    customer_features = [
-        ("current_point_balance", "Points available to customer"),
-        ("points_expiring_next_month", "Urgent points (expiry urgency signal)"),
-        ("is_4uplus", "Premium tier status (4U+)"),
-        ("gas_rewards", "Fuel rewards participation (6m)"),
-        ("doordash", "DoorDash adoption signal"),
-        ("instacart", "InstaCart adoption signal"),
-        ("uber", "Uber adoption signal"),
-        ("household_size", "Number of people in household"),
-        ("num_children", "Presence of children"),
-        ("churn_risk", "Predicted churn probability"),
-        ("days_since_last_txn", "Days since last purchase (recency)"),
+    """Return feature definitions grouped by model applicability.
+    Returns (categories_dict, feature_cols_dict) where feature_cols_dict
+    has keys 'standard' and 'gr'.
+    """
+    feature_cols = read_feature_cols()
+
+    # Full catalogue of known features with descriptions and which models they apply to
+    ALL_FEATURES = [
+        # Standard-only
+        ("is_4uplus",                 "Premium tier status (4U+)",                          "standard"),
+        ("gas_rewards",               "Fuel rewards participation (6m)",                     "standard"),
+        ("doordash",                  "DoorDash adoption signal",                            "standard"),
+        ("instacart",                 "Instacart adoption signal",                           "standard"),
+        ("uber",                      "Uber Eats adoption signal",                           "standard"),
+        ("is_j4u_exclusive",          "J4U exclusive offer flag",                            "standard"),
+        ("is_freshpass_offer",        "FreshPass subscription required",                     "standard"),
+        ("channel_match",             "Does preferred channel match offer channel?",          "standard"),
+        # GR-only
+        ("current_point_balance",     "Points balance — primary GR eligibility gate",        "gr"),
+        ("points_expiring_next_month","Points expiring next month (urgency signal)",          "gr"),
+        ("points_gap",                "Surplus above GR tier threshold",                     "gr"),
+        # Shared by both
+        ("household_size",            "Number of people in household",                       "both"),
+        ("num_children",              "Number of children in household",                     "both"),
+        ("churn_risk",                "Predicted churn probability (0–1)",                   "both"),
+        ("days_since_last_txn",       "Days since last purchase (recency)",                  "both"),
+        ("discount_value",            "Dollar amount or item value of the offer",            "both"),
+        ("redemption_rate",           "Historical redemption % for this offer",              "both"),
+        ("days_until_expiry",         "Days until offer expires",                            "both"),
+        ("category_affinity",         "Customer's historical spend in this offer's category","both"),
     ]
-    
-    offer_features = [
-        ("discount_value", "Dollar amount or item value"),
-        ("is_j4u_exclusive", "J4U exclusive offer flag"),
-        ("is_freshpass_offer", "FreshPass subscription required"),
-        ("redemption_rate", "Historical redemption % for offer"),
-        ("days_until_expiry", "Days until offer expires"),
-    ]
-    
-    interaction_features = [
-        ("channel_match", "Does channel match customer preference?"),
-        ("category_affinity", "Historical spend in this category"),
-        ("points_gap", "Distance above GR tier threshold"),
-    ]
-    
-    return {
-        "Customer": customer_features,
-        "Offer": offer_features,
-        "Interaction": interaction_features,
-    }, current_features
+
+    categories = {
+        "Standard Model Only": [(n, d) for n, d, m in ALL_FEATURES if m == "standard"],
+        "GR Model Only":       [(n, d) for n, d, m in ALL_FEATURES if m == "gr"],
+        "Both Models":         [(n, d) for n, d, m in ALL_FEATURES if m == "both"],
+    }
+
+    return categories, feature_cols
 
 
 def get_feature_importance():
-    """Get feature importance from model metadata"""
+    """Get feature importance from model_metadata.json and model_gr_metadata.json."""
     meta = load_model_metadata()
-    
     importance = {}
-    
-    # Standard model importance
+
     if "propensity_standard" in meta and "top_features" in meta["propensity_standard"]:
         for feat, imp in meta["propensity_standard"]["top_features"]:
             importance[feat] = {"standard": imp, "gr": None}
-    
-    # GR model importance
+
     if "propensity_gr" in meta and "top_features" in meta["propensity_gr"]:
         for feat, imp in meta["propensity_gr"]["top_features"]:
             if feat in importance:
                 importance[feat]["gr"] = imp
             else:
                 importance[feat] = {"standard": None, "gr": imp}
-    
+
     return importance
 
 
-def write_feature_cols(selected_features):
-    """Write modified FEATURE_COLS back to scoring_ml_split.py"""
+def write_feature_cols(selected_standard: list, selected_gr: list):
+    """Write updated FEATURE_COLS_STANDARD and FEATURE_COLS_GR back to scoring_ml.py."""
     import re
-    
-    scoring_file = os.path.join(os.path.dirname(__file__), "engine", "scoring_ml_split.py")
-    
+
+    scoring_file = os.path.join(os.path.dirname(__file__), "engine", "scoring_ml.py")
     with open(scoring_file, 'r', encoding='utf-8') as f:
         content = f.read()
-    
-    # Build new FEATURE_COLS
-    new_cols = "FEATURE_COLS = [\n"
-    new_cols += "    # Customer\n"
-    customer_feats = [f for f in selected_features if f in [
-        "current_point_balance", "points_expiring_next_month", "is_4uplus", "gas_rewards",
-        "doordash", "instacart", "uber", "household_size", "num_children", "churn_risk",
-        "days_since_last_txn"
-    ]]
-    new_cols += ",\n    ".join([f'"{f}"' for f in customer_feats])
-    
-    new_cols += "\n    # Offer\n"
-    offer_feats = [f for f in selected_features if f in [
-        "discount_value", "is_j4u_exclusive", "is_freshpass_offer", "redemption_rate",
-        "days_until_expiry"
-    ]]
-    new_cols += ", " + ",\n    ".join([f'"{f}"' for f in offer_feats])
-    
-    new_cols += "\n    # Interaction\n"
-    interaction_feats = [f for f in selected_features if f in [
-        "channel_match", "category_affinity", "points_gap"
-    ]]
-    new_cols += ", " + ",\n    ".join([f'"{f}"' for f in interaction_feats])
-    
-    new_cols += ",\n]"
-    
-    # Replace in file
-    pattern = r'FEATURE_COLS = \[.*?\]'
-    new_content = re.sub(pattern, new_cols, content, flags=re.DOTALL)
-    
+
+    _STANDARD_CUSTOMER = ["is_4uplus", "gas_rewards", "doordash", "instacart", "uber",
+                          "household_size", "num_children", "churn_risk", "days_since_last_txn"]
+    _STANDARD_OFFER    = ["discount_value", "is_j4u_exclusive", "is_freshpass_offer",
+                          "redemption_rate", "days_until_expiry"]
+    _STANDARD_INTER    = ["channel_match", "category_affinity"]
+
+    _GR_CUSTOMER = ["current_point_balance", "points_expiring_next_month", "is_4uplus",
+                    "household_size", "num_children", "churn_risk", "days_since_last_txn"]
+    _GR_OFFER    = ["discount_value", "redemption_rate", "days_until_expiry"]
+    _GR_INTER    = ["category_affinity", "points_gap"]
+
+    def _build_list(var_name, selected, customer_pool, offer_pool, inter_pool, comment_no_pts=""):
+        c = [f for f in customer_pool if f in selected]
+        o = [f for f in offer_pool    if f in selected]
+        i = [f for f in inter_pool    if f in selected]
+        lines = [f'{var_name} = [']
+        if comment_no_pts:
+            lines.append(f'    # Customer — {comment_no_pts}')
+        else:
+            lines.append('    # Customer')
+        lines.append('    ' + ', '.join(f'"{f}"' for f in c) + ',')
+        lines.append('    # Offer')
+        lines.append('    ' + ', '.join(f'"{f}"' for f in o) + ',')
+        lines.append('    # Interaction')
+        lines.append('    ' + ', '.join(f'"{f}"' for f in i) + ',')
+        lines.append(']')
+        return '\n'.join(lines)
+
+    new_std = _build_list("FEATURE_COLS_STANDARD", selected_standard,
+                          _STANDARD_CUSTOMER, _STANDARD_OFFER, _STANDARD_INTER,
+                          comment_no_pts="no points features; standard offers don't require points to redeem")
+    new_gr  = _build_list("FEATURE_COLS_GR", selected_gr,
+                          _GR_CUSTOMER, _GR_OFFER, _GR_INTER)
+
+    content = re.sub(r'FEATURE_COLS_STANDARD\s*=\s*\[.*?\]', new_std, content, flags=re.DOTALL)
+    content = re.sub(r'FEATURE_COLS_GR\s*=\s*\[.*?\]',      new_gr,  content, flags=re.DOTALL)
+
     with open(scoring_file, 'w', encoding='utf-8') as f:
-        f.write(new_content)
-    
+        f.write(content)
+
     return True
 
 
 def render_feature_engineer():
-    """Business-friendly UI for managing propensity model features"""
+    """Business-friendly UI for managing propensity model features."""
     st.markdown("# 🔧 Feature Engineer")
-    st.markdown("Customize features: add/remove, and adjust their importance weights.")
-    
-    categories, current_features = get_feature_categories()
+    st.markdown("Enable/disable features for each model. Changes trigger a full retrain of both propensity models.")
+
+    categories, feature_cols = get_feature_categories()
     feature_importance = get_feature_importance()
-    
-    st.markdown("---")
-    
-    # Show current model performance
+    std_active = set(feature_cols.get("standard", []))
+    gr_active  = set(feature_cols.get("gr", []))
+
+    # Current model metrics
     meta = load_model_metadata()
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        auc_std = meta.get("propensity_standard", {}).get("auc_cv", "—")
-        st.metric("Propensity (Standard) AUC", f"{auc_std:.4f}" if isinstance(auc_std, float) else auc_std)
-    with col2:
-        auc_gr = meta.get("propensity_gr", {}).get("auc_cv", "—")
-        st.metric("Propensity (GR) AUC", f"{auc_gr:.4f}" if isinstance(auc_gr, float) else auc_gr)
-    with col3:
-        n_features = len(current_features)
-        st.metric("Total Features", n_features)
-    
+    c1, c2, c3, c4 = st.columns(4)
+    auc_std = meta.get("propensity_standard", {}).get("auc_cv", "—")
+    auc_gr  = meta.get("propensity_gr", {}).get("auc_cv", "—")
+    c1.metric("Standard AUC", f"{auc_std:.4f}" if isinstance(auc_std, float) else auc_std)
+    c2.metric("GR AUC",       f"{auc_gr:.4f}"  if isinstance(auc_gr,  float) else auc_gr)
+    c3.metric("Standard Features", len(std_active))
+    c4.metric("GR Features",        len(gr_active))
+
     st.markdown("---")
-    st.markdown("### 🎚️ Feature Weight Multipliers")
-    st.caption("Adjust how influential each feature is during training (1.0 = normal, 0.5 = half, 2.0 = double)")
-    
-    st.markdown("---")
-    st.markdown("### 🎯 Adjust Feature Importance")
-    st.caption("✅ = Currently used  |  ☐ = Not used (can add)")
-    
-    selected_features = []
-    feature_weights = {}
-    changes_summary = {"added": [], "removed": [], "adjusted": []}
-    
-    for category, features in categories.items():
+    st.caption("✅ = currently active  |  ☐ = inactive (can add)  |  importance % from last training run")
+
+    selected_std = []
+    selected_gr  = []
+    changes = {"std_added": [], "std_removed": [], "gr_added": [], "gr_removed": []}
+
+    # Section headers per group
+    _GROUP_LABEL = {
+        "Standard Model Only": "Standard model only — not applicable to GR offers",
+        "GR Model Only":       "GR model only — points/threshold signals not relevant to standard offers",
+        "Both Models":         "Shared by both models",
+    }
+
+    for group_name, features in categories.items():
         if not features:
             continue
-        
-        st.markdown(f"### {category} Features")
-        
+        st.markdown(f"#### {group_name}")
+        st.caption(_GROUP_LABEL.get(group_name, ""))
+
         for feat_name, feat_desc in features:
-            # Check if this feature is currently in use
-            is_currently_used = feat_name in current_features
-            
-            # Get importance scores
-            imp = feature_importance.get(feat_name, {"standard": None, "gr": None})
-            current_imp_std = imp['standard'] if imp['standard'] else 0
-            current_imp_gr = imp['gr'] if imp['gr'] else 0
-            
-            # Create expander with status and importance %
-            status_icon = "✅" if is_currently_used else "☐"
-            if is_currently_used and (current_imp_std or current_imp_gr):
-                # Show importance in subtitle for used features
-                imp_display = []
-                if current_imp_std:
-                    imp_display.append(f"Std: {current_imp_std:.1%}")
-                if current_imp_gr:
-                    imp_display.append(f"GR: {current_imp_gr:.1%}")
-                imp_text = " | ".join(imp_display)
-                expander_title = f"{status_icon} **{feat_name}** — {imp_text}"
-            else:
-                expander_title = f"{status_icon} **{feat_name}**"
-            
-            with st.expander(expander_title):
+            imp        = feature_importance.get(feat_name, {"standard": None, "gr": None})
+            imp_std    = imp["standard"]
+            imp_gr     = imp["gr"]
+            in_std     = feat_name in std_active
+            in_gr      = feat_name in gr_active
+
+            # Build expander title
+            imp_parts = []
+            if imp_std is not None:
+                imp_parts.append(f"Std {imp_std:.1%}")
+            if imp_gr is not None:
+                imp_parts.append(f"GR {imp_gr:.1%}")
+            imp_str = f" — {', '.join(imp_parts)}" if imp_parts else ""
+            active_icon = "✅" if (in_std or in_gr) else "☐"
+            with st.expander(f"{active_icon} **{feat_name}**{imp_str}"):
                 st.caption(feat_desc)
-                
-                # Main checkbox - pre-checked if currently used
-                is_checked = st.checkbox(
-                    "Use this feature",
-                    value=is_currently_used,
-                    key=f"feat_{feat_name}"
-                )
-                
-                if is_checked:
-                    selected_features.append(feat_name)
-                    
-                    # Track if this is a new addition
-                    if not is_currently_used:
-                        changes_summary["added"].append(feat_name)
-                    
-                    # Show current vs target importance (only for selected features)
-                    if current_imp_std or current_imp_gr:
-                        st.markdown("**Adjust importance:**")
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            if current_imp_std:
-                                st.metric("Standard Model", f"{current_imp_std:.1%}")
-                                new_imp_std = st.number_input(
-                                    f"Target % (Standard)",
-                                    min_value=0.0,
-                                    max_value=100.0,
-                                    value=float(current_imp_std * 100),
-                                    step=0.1,
-                                    key=f"target_std_{feat_name}",
-                                    label_visibility="collapsed"
-                                ) / 100.0
-                                if new_imp_std != current_imp_std:
-                                    # Calculate multiplier
-                                    multiplier = new_imp_std / current_imp_std if current_imp_std > 0 else 1.0
-                                    feature_weights[feat_name] = multiplier
-                                    changes_summary["adjusted"].append((feat_name, current_imp_std, new_imp_std))
-                                    st.caption(f"📊 Multiplier: **{multiplier:.2f}x**")
-                            else:
-                                st.caption("*(Not used in Standard model)*")
-                        
-                        with col2:
-                            if current_imp_gr:
-                                st.metric("GR Model", f"{current_imp_gr:.1%}")
-                                new_imp_gr = st.number_input(
-                                    f"Target % (GR)",
-                                    min_value=0.0,
-                                    max_value=100.0,
-                                    value=float(current_imp_gr * 100),
-                                    step=0.1,
-                                    key=f"target_gr_{feat_name}",
-                                    label_visibility="collapsed"
-                                ) / 100.0
-                                if new_imp_gr != current_imp_gr:
-                                    # For GR, use the GR multiplier
-                                    multiplier = new_imp_gr / current_imp_gr if current_imp_gr > 0 else 1.0
-                                    feature_weights[feat_name] = multiplier
-                                    changes_summary["adjusted"].append((feat_name, current_imp_gr, new_imp_gr))
-                                    st.caption(f"📊 Multiplier: **{multiplier:.2f}x**")
-                            else:
-                                st.caption("*(Not used in GR model)*")
-                    else:
-                        st.info("ℹ️ New feature — will get importance after training")
+
+                ec1, ec2 = st.columns(2)
+
+                # Standard column — only show for standard-applicable features
+                if group_name in ("Standard Model Only", "Both Models"):
+                    with ec1:
+                        use_std = st.checkbox("Standard model", value=in_std, key=f"std_{feat_name}")
+                        if use_std:
+                            selected_std.append(feat_name)
+                            if not in_std:
+                                changes["std_added"].append(feat_name)
+                        else:
+                            if in_std:
+                                changes["std_removed"].append(feat_name)
+                        if imp_std is not None:
+                            st.caption(f"Current importance: {imp_std:.1%}")
                 else:
-                    # Feature is unchecked
-                    if is_currently_used:
-                        changes_summary["removed"].append(feat_name)
-                    feature_weights[feat_name] = 1.0
-    
+                    with ec1:
+                        st.caption("*(Standard model — N/A)*")
+
+                # GR column — only show for GR-applicable features
+                if group_name in ("GR Model Only", "Both Models"):
+                    with ec2:
+                        use_gr = st.checkbox("GR model", value=in_gr, key=f"gr_{feat_name}")
+                        if use_gr:
+                            selected_gr.append(feat_name)
+                            if not in_gr:
+                                changes["gr_added"].append(feat_name)
+                        else:
+                            if in_gr:
+                                changes["gr_removed"].append(feat_name)
+                        if imp_gr is not None:
+                            st.caption(f"Current importance: {imp_gr:.1%}")
+                else:
+                    with ec2:
+                        st.caption("*(GR model — N/A)*")
+
     st.markdown("---")
-    
-    # Show what will happen
-    if changes_summary["removed"]:
-        removed_list = ", ".join([f"`{f}`" for f in changes_summary["removed"]])
-        st.warning(f"⚠️ **Removing {len(changes_summary['removed'])} feature(s):**\n{removed_list}")
-    
-    if changes_summary["added"]:
-        added_list = ", ".join([f"`{f}`" for f in changes_summary["added"]])
-        st.success(f"✅ **Adding {len(changes_summary['added'])} new feature(s):**\n{added_list}")
-    
-    if changes_summary["adjusted"]:
-        st.info("🎯 **Adjusting importance for:**")
-        for feat, old_imp, new_imp in changes_summary["adjusted"]:
-            delta = (new_imp - old_imp) * 100  # in percentage points
-            arrow = "↑" if delta > 0 else "↓"
-            st.caption(f"  {arrow} `{feat}`: {old_imp:.1%} → {new_imp:.1%}")
-    
-    if not changes_summary["added"] and not changes_summary["removed"] and not changes_summary["adjusted"]:
-        st.info("ℹ️ No changes to current features")
-    
-    if len(selected_features) < 5:
-        st.error("❌ **Minimum 5 features required for model training**")
-    
-    st.markdown("### How It Works")
-    st.markdown("""
-    1. **View Current Importance** — See what % each feature contributes in the current models
-    2. **Set Target %** — Enter your desired importance (can increase or decrease)
-    3. **See the Adjustment** — Shows the multiplier being applied (e.g., 2.0x to double importance)
-    4. **Retrain** — Click "Apply" to retrain models with your new emphasis
-    5. **New Importance** — After training, see what % the feature actually achieved
-    
-    ✨ Model learns with your custom weights to match your business priorities!
-    """)
-    
-    # Apply button
-    if st.button("🚀 Apply Changes & Retrain Models", type="primary", 
-                 disabled=len(selected_features) < 5):
-        
-        with st.spinner("⏳ Updating files and retraining..."):
+
+    # Change summary
+    any_changes = any(changes.values())
+    if any_changes:
+        if changes["std_added"]:
+            st.success(f"Standard — adding: {', '.join(f'`{f}`' for f in changes['std_added'])}")
+        if changes["std_removed"]:
+            st.warning(f"Standard — removing: {', '.join(f'`{f}`' for f in changes['std_removed'])}")
+        if changes["gr_added"]:
+            st.success(f"GR — adding: {', '.join(f'`{f}`' for f in changes['gr_added'])}")
+        if changes["gr_removed"]:
+            st.warning(f"GR — removing: {', '.join(f'`{f}`' for f in changes['gr_removed'])}")
+    else:
+        st.info("ℹ️ No changes — feature sets match current scoring_ml.py")
+
+    err_std = len(selected_std) < 3
+    err_gr  = len(selected_gr)  < 3
+    if err_std:
+        st.error(f"❌ Standard model needs at least 3 features (currently {len(selected_std)})")
+    if err_gr:
+        st.error(f"❌ GR model needs at least 3 features (currently {len(selected_gr)})")
+
+    if st.button("🚀 Apply Changes & Retrain Both Models", type="primary",
+                 disabled=(err_std or err_gr)):
+        with st.spinner("⏳ Updating scoring_ml.py and retraining…"):
             try:
-                # Write new features to file
-                write_feature_cols(selected_features)
-                st.success("✅ Features updated in scoring_ml_split.py")
-                
-                # Save feature weights to JSON
-                weights_file = os.path.join(os.path.dirname(__file__), "engine", "feature_weights.json")
-                import json
-                with open(weights_file, 'w', encoding='utf-8') as f:
-                    json.dump(feature_weights, f, indent=2)
-                st.success(f"✅ Feature weights saved ({sum(1 for w in feature_weights.values() if w != 1.0)} customized)")
-                
-                # Retrain models
+                write_feature_cols(selected_std, selected_gr)
+                st.success(f"✅ scoring_ml.py updated — Standard: {len(selected_std)} features, GR: {len(selected_gr)} features")
+
                 import subprocess
-                import sys
-                
                 env = os.environ.copy()
                 env["DATABASE_URL"] = DB_URL
                 env["PYTHONIOENCODING"] = "utf-8"
-                
+
                 result = subprocess.run(
-                    [sys.executable, os.path.join(os.path.dirname(__file__), "engine", "scoring_ml_split.py"), "--retrain"],
+                    [sys.executable, os.path.join(os.path.dirname(__file__), "engine", "scoring_ml.py"), "--retrain"],
                     cwd=os.path.dirname(os.path.dirname(__file__)),
                     capture_output=True,
                     text=True,
                     env=env,
-                    timeout=600
+                    timeout=600,
                 )
-                
+
                 if result.returncode == 0:
-                    st.success("✅ Models successfully retrained!")
-                    st.info("📊 Feature importance updated. Refresh to see new metrics.")
-                    
-                    # Clear caches
+                    st.success("✅ Both models retrained successfully!")
+                    st.code(result.stdout[-2000:] if len(result.stdout) > 2000 else result.stdout)
                     st.cache_data.clear()
-                    st.toast("🔄 UI caches cleared")
+                    st.toast("🔄 Caches cleared — rankings updated")
                 else:
-                    st.error(f"❌ Retraining failed:\n{result.stderr}")
-                    
+                    st.error("❌ Retraining failed:")
+                    st.code(result.stderr[-2000:] if len(result.stderr) > 2000 else result.stderr)
+
             except subprocess.TimeoutExpired:
-                st.error("⏱️ Retraining took too long (>10 minutes). Please try again later.")
+                st.error("⏱️ Retraining exceeded 10 minutes. Try reducing the feature count.")
             except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
-    
+                st.error(f"❌ Error: {e}")
+
     st.markdown("---")
     st.markdown("### Feature Definitions")
     
