@@ -14,7 +14,7 @@ from sqlalchemy import create_engine, text
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
-DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres@localhost/smartrewards")
+DB_URL = os.getenv("DATABASE_URL", "postgresql://localhost/smartrewards")
 _engine = create_engine(DB_URL, pool_pre_ping=True)
 
 def _logo_b64() -> str:
