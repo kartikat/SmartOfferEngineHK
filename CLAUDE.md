@@ -161,7 +161,7 @@ Dept discounts exist at tiers 100 (Bakery), 200 (Produce), 300 (Bakery), 400 (Me
 
 ## Streamlit UI
 
-**Navigation pages:** My Offers · My Rewards · My Clipped Offers · My Profile · Segment Explorer · Compare Customers · Compare Models · **Feature Weight Studio** · How Offers Are Scored · Demo Script
+**Navigation pages:** My Offers · My Rewards · My Clipped Offers · My Profile · Segment Explorer · Compare Customers · Compare Models · **Feature Weight Studio** · How Offers Are Scored · **Feature Engineer** · Demo Script
 
 **My Offers:** Standard + Fuel + Points-multiplier offers only (GR filtered out). Shows top N from `scored_df` filtered by `program_type != 'Grocery Reward'`. Gold teaser banner at bottom shows eligible GR tier count.
 
@@ -177,6 +177,14 @@ Dept discounts exist at tiers 100 (Bakery), 200 (Produce), 300 (Bakery), 400 (Me
 - Both tabs share `_render_ranking_comparison(merged, orig_score_col, custom_score_col, orig_rank_col, custom_rank_col, orig_label, model_color)` — the side-by-side card renderer with ▲▼ deltas.
 - **Important:** `orig_rank` is re-numbered 1…N within the standard-only subset before comparison. The stored `rank` in `c360_scored_offers` is within each pool (standard or GR), so no re-numbering is actually needed post-fix — but the re-numbering is kept as a safeguard.
 - Session-only state — weights reset on logout/refresh, never written to DB.
+
+**Feature Engineer:** Admin page for permanently changing which features the propensity models train on.
+- Reads `FEATURE_COLS_STANDARD` and `FEATURE_COLS_GR` from `scoring_ml.py` via `read_feature_cols()`
+- Displays features grouped as **Standard Only / GR Only / Both Models** — each feature has a separate Standard and GR checkbox
+- AUC metrics sourced from `model_metadata.json` + `model_gr_metadata.json` (production outputs of `scoring_ml.py`)
+- "Apply & Retrain" button: calls `write_feature_cols(selected_std, selected_gr)` which regex-replaces both lists in `scoring_ml.py`, then runs `scoring_ml.py --retrain` via subprocess
+- Changes are **permanent** (modifies source file + triggers real retrain) — contrast with Feature Weight Studio which is session-only
+- `scoring_ml_split.py` is a teammate's separate file — do **not** wire Feature Engineer to it; it's disconnected from the UI's data path
 
 **Sidebar customer switcher:** Dropdown replaces static household ID — select any customer without signing out.
 
