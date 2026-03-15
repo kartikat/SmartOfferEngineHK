@@ -1,0 +1,58 @@
+{
+  "model_type": "propensity_gr",
+  "n_train": 1208,
+  "n_pos": 189,
+  "n_neg": 1019,
+  "scale_pos_weight": 5.392,
+  "auc_cv": 0.5722,
+  "top_features": [
+    [
+      "discount_value",
+      0.15805241465568542
+    ],
+    [
+      "num_children",
+      0.09015609323978424
+    ],
+    [
+      "points_gap",
+      0.08800140768289566
+    ],
+    [
+      "points_expiring_next_month",
+      0.08730074763298035
+    ],
+    [
+      "category_affinity",
+      0.08304363489151001
+    ],
+    [
+      "days_since_last_txn",
+      0.07626628130674362
+    ],
+    [
+      "churn_risk",
+      0.07432428747415543
+    ],
+    [
+      "redemption_rate",
+      0.07168763875961304
+    ],
+    [
+      "current_point_balance",
+      0.0709179937839508
+    ],
+    [
+      "is_4uplus",
+      0.06870416551828384
+    ],
+    [
+      "household_size",
+      0.06833483278751373
+    ],
+    [
+      "days_until_expiry",
+      0.06321051716804504
+    ]
+  ]
+}

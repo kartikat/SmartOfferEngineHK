@@ -194,73 +194,120 @@ python -m streamlit run files/app.py
 
 Navigate to **Feature Engineer** page to manage models without code. 🚀
 
+---
+
+## Session 8 — 2026-03-15
+
 ### What was done
 
-#### 1. Expanded grocery offer catalog
-- Added **Seafood** and **Deli** as new departments (UPCs, affinity, transaction weights)
-- Added 21 new synthetic UPCs: salmon, cod, shrimp, canned tuna, rotisserie chicken, Boar's Head meats, salami, pasta, olive oil, avocados, broccoli, apples, pork tenderloin, sirloin, ice cream, frozen burritos, sourdough, tortillas
-- Added 15 new offer templates for Seafood, Deli, Produce, Meat, Frozen, Pantry
-- `seafood_sales_amt` and `deli_sales_amt` in `c360_customer_ltv_txn_agg` now computed from real transaction data
-- Offers: 26 → **64** total (6 real + 58 synthetic)
-- UPCs: 52 → **71** (30 real + 41 synthetic)
+#### 1. UI Visual Refresh — complete
 
-#### 2. Full Grocery Reward tier structure (business inputs from real Safeway app)
-- Replaced 2 GR placeholder offers with **25 real-structure GR offers** across 8 tiers
-- Tiers: 100 / 200 / 300 / 400 / 500 / 700 / 1000 / 1200 pts
-- Three offer types per tier:
-  - `GROCERY_REWARD` — $ off basket (8 offers, one per tier)
-  - `DEPT_REWARD` — $ off department: Bakery (100/300), Produce (200/500), Meat (400)
-  - `FREE_ITEM` — free own-brand product (12 offers, 2 per tier 100–700)
-- `pts_threshold` encoded as `tier_1_points_threshold` on each offer
-- `program_subtype` set to `"Department"` / `"Free Item"` for UI display
-- Template format extended to 8-tuple to carry `pts_threshold`
+Six items planned and built:
 
-#### 3. Rule-based scoring fix for GR offers
-- **Bug**: `points_score` was always 0.4 because `t2/t3` defaulted to 999999 (NULL in DB)
-- **Fix**: `points_score = min(balance / threshold / 2, 1.0)` — graduated by surplus above threshold
-- **Fix**: `gr_score` floor of 0.3 so first-time GR customers aren't penalised
-- Result: GR offers now surface correctly for high-balance customers
+**Item 1 — Category icons + discount badge colouring**
+- `CATEGORY_ICONS` dict — 14 categories mapped to emojis (🧀 🥦 🍞 🥩 🐟 🥪 🛒 ❄️ 🧹 ⛽ etc.)
+- `DISCOUNT_COLORS` dict — 8 discount types mapped to hex colours: green (AMT_OFF/PCT_OFF), orange (FUEL_CENTS), purple (POINTS_MULTIPLIER), blue (FREE_DELIVERY), red (GR/FREE_ITEM)
+- `category_icon(category_nm)` and `discount_color(discount_type_cd)` helper functions added
+- `load_scored()` updated to LEFT JOIN `c360_offer_summary` and pull `rep_category_nm` as `category_nm` — resolves icons correctly from DB
 
-#### 4. GR / standard offer separation in UI
-- `TOP_N_OFFERS` raised from 10 → **15** in both scoring engines (ensures 10 standard after GR filtered)
-- **My Offers** — GR offers filtered out entirely (`program_type != 'Grocery Reward'`)
-- Gold teaser banner at bottom of My Offers shows eligible tier count and points balance
-- **My Rewards** (new page) — tier tab UX matching real Safeway app:
-  - Only tiers customer can afford shown as tabs
-  - Each tab: basket discount card + dept discount card + free item cards (3-col grid)
-  - "Use XXX pts" button on every card
+**Item 2 — Login page card**
+- Replaced plain `st.selectbox` form with centred white card (drop shadow, rounded corners)
+- Larger logo, product tagline, "Sign In →" primary button, "no password required" hint
 
-#### 5. Points deduction on GR redemption
-- Clicking "Use XXX pts" now:
-  1. Writes to `c360_clips`
-  2. Decrements `current_point_balance` by tier threshold (`GREATEST(..., 0)`)
-  3. Writes to `c360_rewards_redeemed`
-  4. Clears `load_customers` and `load_gr_offers` caches → balance and tabs update immediately
+**Item 3 — Sidebar tier badge**
+- Replaced `st.caption(f"Tier: ...")` with `tier_badge_sidebar()` — styled card block
+- 4U+: gold star + blue gradient + points balance; Standard: slate blue + points balance
 
-#### 6. Sidebar customer switcher
-- Replaced static household ID display with a dropdown
-- Select any customer without signing out
+**Item 4 — Offer card redesign — My Offers**
+- New two-column layout: category icon block (left) + offer name/pills/score (right)
+- Discount badge coloured by `discount_type_cd` (green/orange/purple/blue/red)
+- Channel + boost pills on their own row below offer name
+- Score demoted to quiet metadata line above bar; discount value leads visually
 
-#### 7. CLAUDE.md updated
-- New departments, GR tier table, discount_type_cd additions, TOP_N change, My Rewards page, propensity model updated counts
+**Items 5 & 6 — Expiry pills + My Rewards cards**
+- Expiry pills absorbed into card redesign: ≤3d → red `⏰ Expires in Xd`, ≤7d → amber, >7d → hidden
+- My Rewards cards redesigned to match My Offers: same icon block (amber bg), same discount badge, pts pill + expiry pill row, amber score bar gradient
+- `render_rewards` loop updated with `idx` counter for rank display
+
+---
+
+## Session 7 — 2026-03-10 (continued)
+
+### What was done
+
+#### 1. Split propensity model into Standard and GR models
+
+- **Before:** single XGBoost model trained on all offers mixed together (AUC 0.522)
+- **After:** two separate models trained on filtered clip/redemption data:
+  - `model_type='propensity'` — standard offers only, 16 features, **AUC 0.626**
+  - `model_type='propensity_gr'` — GR offers only, 12 features, **AUC 0.572**
+- Standard model top features: `channel_match`, `instacart`, `redemption_rate`, `category_affinity`, `is_4uplus`
+- GR model top features: `discount_value`, `num_children`, `points_gap`, `points_expiring_next_month`, `category_affinity`
+- Saved models: `model_standard.pkl` / `model_gr.pkl`; metadata: `model_metadata.json` / `model_gr_metadata.json`
+
+#### 2. Removed points features from standard propensity model
+
+- **Bug/design issue:** `current_point_balance`, `points_expiring_next_month`, and `points_gap` were in `FEATURE_COLS_STANDARD` — but standard offers don't require points to redeem, so these signals are noise
+- `points_gap` for a standard offer = `current_point_balance - 0` (NULL threshold filled with 0) — meaningless duplicate
+- **Fix:** removed all 3 from `FEATURE_COLS_STANDARD`; standard model now 19 → **16 features**
+- Points features remain correctly in `FEATURE_COLS_GR` (12 features) where they belong
+
+#### 3. My Rewards page — score-based GR ranking
+
+- **Before:** static tier tab UX (100 pts / 200 pts / … tabs), queries `c360_offer` directly
+- **After:** single ranked card list from `propensity_gr` model, gated by `pts_threshold <= balance`, ordered by `score DESC`
+- Added `load_gr_scored_offers(hid, balance)` — queries `c360_scored_offers WHERE model_type='propensity_gr'`
+- Each card shows: badge, offer description, pts cost pill, category, expiry, match score bar
+- "Use XXX pts" button preserved; points deduction logic unchanged
+- Caption: "X rewards available — ranked by your personalised score"
+
+#### 4. Feature Weight Studio — new page
+
+- Business user page for exploring how feature weights affect offer ranking
+- **Rule-Based tab** (5 sliders): adjusts the 5 scoring components stored in `c360_scored_offers`; applies same recency/tier boosts; custom score = weighted sum of components
+- **Propensity tab** (16 sliders): fetches raw feature matrix at runtime via `load_propensity_feature_matrix(hid)`; groups features into 7 labelled sections; min-max normalises per customer's offers; inverts features where lower = better (`days_since_last_txn`, `churn_risk`)
+- Side-by-side comparison in both tabs: original rank vs custom rank with ▲▼ deltas and score bars
+- Session-only state (`st.session_state`) — never written to DB; resets on logout/refresh
+- Reset button on each tab
+
+#### 5. Separate scoring pools — standard vs GR (bug fix)
+
+- **Bug:** Standard and GR offers competed in the same `TOP_N_OFFERS=15` pool in `scoring.py`. High-balance customers (eligible for many GR tiers) had all 15 slots taken by GR offers — 0 standard offers in scored results.
+- **Fix `scoring.py`:** Replaced `TOP_N_OFFERS=15` with `TOP_N_STANDARD=10` and `TOP_N_GR=5`. `run_batch_scoring` now splits scored offers into separate lists by `discount_type_cd` and ranks them independently. Every household always gets up to 10 standard + 5 GR offers.
+- **Fix `scoring_ml.py`:** Same pool split applied to propensity models — added `top_n` parameter to `_score_pairs`; `score_standard_pairs` passes `TOP_N_STANDARD=10`, `score_gr_pairs` passes `TOP_N_GR=5`.
+- **Result:** `rule_based` 1797 rows, `propensity` 1200 rows (120×10), `propensity_gr` 600 rows (120×5)
+- HH00118 (previously 4 standard, 11 GR) → now 10 standard + 5 GR ✅
+
+#### 6. Feature Weight Studio — orig_rank delta bug fix
+
+- **Bug:** `orig_rank` in the comparison table used the absolute stored rank (which included GR offers ranked above standard). Even at 100% default weights, deltas were non-zero (e.g. ▲6 for Strawberries because 5 GR offers were ranked above it).
+- **Fix:** After filtering to standard-only offers, re-number `orig_rank` as 1,2,3… within the subset before merging. Delta now correctly shows 0 at default weights and only moves when sliders are adjusted.
+- **Verified:** All 10 deltas = 0 at 100% weights; rank swaps appear correctly when Transaction Affinity boosted to 200%.
+
+#### 7. Root-cause investigation: $7 Off Produce showing first for HH00005
+
+- `discount_value` is the #1 GR model feature; $7 Off Produce has the highest discount_value in the 500pt tier
+- HH00005's true top affinity is Deli (0.139) but no Deli dept reward exists in the catalog
+- Model is correct — the catalog gap is the issue → added to backlog
 
 ---
 
 ## Current State
 
-**Full stack running. 64 offers across 10 departments. Full GR tier system live.**
+**Full stack running. 64 offers across 10 departments. Three scoring models live.**
 
 ```
 generate_data.py  →  PostgreSQL (18 tables, 64 offers, 71 UPCs)
                           ↓
-scoring.py        →  c360_scored_offers (1,800 rows — 15 per household, rule_based)
-scoring_ml.py     →  c360_scored_offers (1,800 rows — 15 per household, propensity)
+scoring.py        →  c360_scored_offers (1,797 rows — 10 standard + 5 GR per household, rule_based)
+scoring_ml.py     →  c360_scored_offers (1,800 rows — propensity: 1,200 + propensity_gr: 600)
                           ↓
 app.py (UI)       →  reads PostgreSQL directly   (port 8501)
 main.py (API)     →  serves from c360_scored_offers  (port 8000)
 ```
 
-**Propensity model:** 2,375 training examples (418 pos / 1,957 neg), CV AUC 0.522, top features: `channel_match`, `discount_value`, `category_affinity`
+**Standard propensity model:** 1,167 training examples (229 pos / 938 neg), CV AUC 0.626, 16 features, top: `channel_match`, `instacart`, `redemption_rate`
+**GR propensity model:** 1,208 training examples (189 pos / 1,019 neg), CV AUC 0.572, 12 features, top: `discount_value`, `points_gap`, `points_expiring_next_month`
 
 ---
 
@@ -271,12 +318,13 @@ cd /Users/KartikaT/HackathonProject
 export PATH="/opt/homebrew/opt/postgresql@16/bin:$PATH"
 
 # Verify DB
-psql smartrewards -c "SELECT COUNT(*) FROM c360_scored_offers;"  # expect 3,600
+psql smartrewards -c "SELECT model_type, COUNT(*) FROM c360_scored_offers GROUP BY model_type;"
+# expect: rule_based≈1797, propensity=1200, propensity_gr=600
 
 # Re-seed if needed (wipes everything):
 python3 files/data/generate_data.py
 python3 files/engine/scoring.py
-python3 files/engine/scoring_ml.py
+python3 files/engine/scoring_ml.py --retrain
 
 # Start UI (already running on 8501):
 streamlit run files/app.py --server.headless true
@@ -293,14 +341,18 @@ streamlit run files/app.py --server.headless true
 
 | Decision | Rationale |
 |---|---|
+| Points features removed from standard propensity model | Standard offers don't require points to redeem — `points_gap` was just a noisy copy of `current_point_balance` |
+| Separate scoring pools: 10 standard + 5 GR | Prevents GR offers from crowding out standard offers for high-balance customers; previously customers with 2,900+ pts had 0 standard offers in their top 15 |
+| `orig_rank` re-numbered within standard-only subset in Feature Weight Studio | Absolute stored rank includes GR offers above standard — delta would be non-zero even at 100% default weights, confusing users |
+| Separate GR model (propensity_gr) | GR redemption is driven by different signals (points surplus, expiry urgency) than standard offer redemption |
+| My Rewards uses propensity_gr score not tier tabs | Score-based ranking is more personalised; customers see their best-value GR offers first regardless of tier |
+| Feature Weight Studio uses linear re-scoring (not XGBoost re-weighting) | Transparent, interpretable, real-time — no model retraining needed; clearly labelled as "what-if" exploration |
+| Feature Weight Studio is session-only | Demo tool for business exploration — no need for persistence; avoids DB complexity |
 | GR offers excluded from standard ranked list | Different product — you *spend* points, not receive discounts |
-| My Rewards as separate page with tier tabs | Matches real Safeway app UX; cleaner demo story |
+| My Rewards as separate page | Matches real Safeway app UX; cleaner demo story |
 | Points deduct on clip (not checkout) | Demo has no checkout flow; "Use XXX pts" implies immediate redemption |
 | TOP_N_OFFERS = 15 | Ensures 10 standard offers remain after filtering GR from My Offers |
-| `points_score = min(ratio/2, 1.0)` | Single threshold per offer (not 3 tiers); rewards customers well above threshold |
 | `gr_score` floor 0.3 | Prevents new-to-GR customers from being penalised on 15% of score |
-| Seafood/Deli in transaction dept_weights | Without this, new UPCs would never appear in transactions or affinity |
-| `pts_threshold` as 8th template tuple element | Keeps offer template format compact; None for non-GR offers |
 
 ---
 
@@ -325,8 +377,11 @@ HackathonProject/
     ├── data/generate_data.py        # Seeds all 18 tables
     ├── engine/
     │   ├── scoring.py               # Rule-based engine → c360_scored_offers
-    │   ├── scoring_ml.py            # XGBoost propensity engine → c360_scored_offers
-    │   └── model_metadata.json      # AUC + feature importances (written after each ML run)
+    │   ├── scoring_ml.py            # Two XGBoost models → c360_scored_offers
+    │   ├── model_standard.pkl       # Saved standard propensity model
+    │   ├── model_gr.pkl             # Saved GR propensity model
+    │   ├── model_metadata.json      # Standard model AUC + feature importances
+    │   └── model_gr_metadata.json   # GR model AUC + feature importances
     └── api/main.py                  # FastAPI REST API — port 8000
 ```
 
@@ -340,61 +395,48 @@ HackathonProject/
 
 ### Backlog (time permitting)
 
-- [ ] **Offer Management System — Dynamic Offers**
-  - **Admin UI**: Streamlit page for business users to create/edit/deactivate offers (CRUD on `c360_offer`); new offers surface in scoring immediately with no code changes
-  - **Dynamic Trigger Engine**: Auto-generate personalised offers based on DB signals:
-    - Win-back: `days_since_last_txn > 14` → % off top category
-    - Churn prevention: `churn_segment_cd = 'High Risk'` → double points offer
-    - Lapsed category: no dept txn in 60 days → dept-specific discount
-    - Points expiry: `points_expiring_next_month > 0` → "use your points" nudge
-    - FreshPass upsell: non-FreshPass + high eCommerce usage → free delivery trial
-  - **Offer Performance Dashboard**: clip rate, redemption rate, revenue impact per offer — retire underperforming offers
+- [ ] **Expand Dept Reward Catalog to Match Affinity**
+  - Add dept rewards for Deli, Seafood, Dairy, Frozen, Grocery (currently only Bakery/Produce/Meat have dept rewards)
+  - Root cause: $7 Off Produce ranks first for HH00005 because `discount_value` dominates and no Deli dept reward exists despite Deli being HH00005's top affinity category
+  - Requires adding new offer templates to `generate_data.py`, re-seeding, and retraining both models
 
-- [ ] **Split Propensity Model — Standard vs GR**
-  - Train two separate XGBoost models: one on standard offer clips/redemptions, one on GR clips only
-  - GR model features should emphasise `points_gap`, `current_point_balance`, `points_expiring_next_month` over channel/demographic signals
-  - Standard model keeps current 19 features
-  - Both write to `c360_scored_offers` under `model_type = 'propensity_standard'` and `model_type = 'propensity_gr'`
-  - UI Compare Models page updated to reflect the split
+- [ ] **Offer Management System — Dynamic Offers**
+  - **Admin UI**: Streamlit page for business users to create/edit/deactivate offers (CRUD on `c360_offer`)
+  - **Dynamic Trigger Engine**: Auto-generate personalised offers based on DB signals (win-back, churn prevention, lapsed category, points expiry, FreshPass upsell)
+  - **Offer Performance Dashboard**: clip rate, redemption rate, revenue impact per offer
+
+- [ ] **Split Propensity Model — persist to Feature Weight Studio**
+  - Feature Weight Studio currently session-only
+  - Future: allow saving a named weight configuration to DB and re-running scoring with custom weights
 
 - [ ] **Login Dropdown — Real Customer Names**
-  - Currently: `HH00118  |  4U+  |  J4U  |  2,977 pts`
-  - Target: `Sarah Johnson  |  4U+  |  J4U  |  2,977 pts`
-  - Replace `household_id` prefix with `full_name` in the login page dropdown and sidebar switcher
-  - `household_id` still used internally (parsing `choice.split("|")[0].strip()` must be updated to extract `household_id` differently — e.g. store as tuple or use index lookup)
+  - Replace `household_id` prefix with `full_name` in login page and sidebar switcher
 
 - [ ] **LTV Aggregate Refresh Job**
-  - `c360_customer_ltv_txn_agg` is computed once at seed time and never updated
-  - Once the transaction flow (below) feeds real data into `c360_txn` + `c360_txn_upc`, this table drifts from actual spend
-  - Build a refresh job that recalculates all dept `sales_amt` columns, channel split, and totals from live transaction data
-  - Also refreshes `c360_cat_affinity` (affinity scores) and `c360_offer_summary` (redemption rates) in the same run
-  - Depends on: Transaction Flow → Redemption Pipeline below
+  - `c360_customer_ltv_txn_agg` is computed once at seed time; needs a refresh job once real transaction flow exists
 
 - [ ] **Transaction Flow → Redemption Pipeline** *(teammate build)*
-  - Build a checkout/transaction flow that writes completed transactions to `c360_txn` and `c360_txn_upc`
-  - On transaction completion, write redemption rows to `c360_redemptions` for any clipped offers that matched purchased UPCs
-  - For GR offers, also write to `c360_rewards_redeemed` and deduct `current_point_balance`
-  - Once live, run `scoring_ml.py --retrain` to incorporate real redemption signals into the propensity model
-  - Integration point: `c360_redemptions` schema already in place — teammate just needs to INSERT with `(redemption_id, txn_id, client_offer_id, household_id, redemption_ts)`
-  - Downstream benefit: `c360_offer_summary.red_pct` and `c360_customer_ltv_txn_agg` recalculate from real data
+  - Checkout flow writing to `c360_txn`, `c360_txn_upc`, `c360_redemptions`
+  - Integration point: `c360_redemptions` schema already in place
 
-- [ ] **UI Visual Refresh — Branding & Offer Images**
-  - General visual polish: improved card design, better typography, spacing, colour hierarchy
-  - Add product/offer images to offer cards — sourced from Safeway product API or static assets per category
-  - Category fallback images (e.g. dairy icon, produce icon) for offers without a specific product image
-  - Consider image storage: static `files/static/images/` folder keyed by `upc_id` or `client_offer_id`, or fetch from Safeway CDN at render time
-  - Apply consistently across My Offers, My Rewards, My Clipped Offers pages
-
-- [ ] **My Rewards UI — Score-Based GR Ranking**
-  - Currently: GR offers shown in tabs grouped by points threshold (100pts / 200pts / 300pts …)
-  - Target: single consolidated list ranked by propensity score (from `propensity_gr` model above), same card UX as My Offers
-  - Eligibility gate still applies (`current_point_balance >= pts_threshold`) — ineligible tiers not shown
-  - Removes the tab structure; customer sees their best-value GR offers first regardless of tier
-  - Depends on: Split Propensity Model backlog item above
+- [x] **UI Visual Refresh — Phase 1 complete**
+  - Category icons (emoji), discount badge colouring, login card, sidebar tier badge, offer card redesign, expiry pills, My Rewards card alignment
+  - Remaining: real product images (requires image hosting decision — deferred)
 
 ---
 
 ## Previous Sessions
+
+### Session 8 — 2026-03-15
+- UI Visual Refresh: category icons, discount badge colouring, login page card, sidebar tier badge, offer card redesign (My Offers + My Rewards), expiry pills
+
+### Session 6 — 2026-03-10
+- Split propensity model (standard + GR), My Rewards score-ranked, Feature Weight Studio built (rule-based only)
+
+### Session 5 — 2026-03-08
+- Expanded grocery catalog (Seafood + Deli departments, 64 offers, 71 UPCs)
+- Full GR tier structure (25 real-structure offers, 8 tiers)
+- Rule-based scoring fix for GR offers, My Rewards page, points deduction, sidebar customer switcher
 
 ### Session 4 — 2026-03-07
 - Architecture diagrams (5 Mermaid), README, docs/how_we_built_it.md, docs/project_phases.md

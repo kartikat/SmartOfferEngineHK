@@ -315,9 +315,11 @@ def load_scored() -> pd.DataFrame:
             COALESCE(so.tier_multiplier_applied, FALSE) AS tier_multiplier_applied,
             o.program_type,
             o.end_dt,
-            (o.end_dt - CURRENT_DATE)::int              AS days_left
+            (o.end_dt - CURRENT_DATE)::int              AS days_left,
+            COALESCE(os.rep_category_nm, '')            AS category_nm
         FROM c360_scored_offers so
         JOIN c360_offer o ON o.client_offer_id = so.client_offer_id
+        LEFT JOIN c360_offer_summary os ON os.client_offer_id = so.client_offer_id
         ORDER BY so.household_id, so.rank
     """, _engine)
 
@@ -380,6 +382,52 @@ if "clipped_offers" not in st.session_state:
 
 # ─── HELPERS ──────────────────────────────────────────────────────────────────
 
+# ─── CATEGORY ICONS ───────────────────────────────────────────────────────────
+
+CATEGORY_ICONS = {
+    "dairy eggs cheese": "🧀",
+    "dairy":             "🧀",
+    "produce":           "🥦",
+    "bakery":            "🍞",
+    "meat":              "🥩",
+    "seafood":           "🐟",
+    "deli":              "🥪",
+    "grocery":           "🛒",
+    "frozen":            "❄️",
+    "household":         "🧹",
+    "fuel":              "⛽",
+    "beverage":          "🥤",
+    "snacks":            "🍿",
+    "health":            "💊",
+}
+
+DISCOUNT_COLORS = {
+    "AMT_OFF":          "#16A34A",   # green
+    "PCT_OFF":          "#16A34A",   # green
+    "FUEL_CENTS":       "#D97706",   # orange
+    "POINTS_MULTIPLIER":"#7C3AED",   # purple
+    "FREE_DELIVERY":    "#1D4ED8",   # blue
+    "GROCERY_REWARD":   "#E31837",   # red
+    "DEPT_REWARD":      "#E31837",   # red
+    "FREE_ITEM":        "#E31837",   # red
+}
+
+
+def category_icon(category_nm: str) -> str:
+    """Return emoji for the offer's category (rep_category_nm), falling back to 🏷️."""
+    key = (category_nm or "").strip().lower()
+    for k, icon in CATEGORY_ICONS.items():
+        if k in key:
+            return icon
+    return "🏷️"
+
+
+def discount_color(discount_type_cd: str) -> str:
+    return DISCOUNT_COLORS.get(discount_type_cd or "", "#E31837")
+
+
+# ─── UI HELPERS ───────────────────────────────────────────────────────────────
+
 def channel_pill(channel: str) -> str:
     mapping = {
         "J4U":        ("pill-j4u",       "for U App"),
@@ -394,6 +442,24 @@ def tier_badge(tier: str) -> str:
     if tier == "4U+":
         return '<span class="badge-4u">★ for U+</span>'
     return '<span class="badge-standard">Standard</span>'
+
+
+def tier_badge_sidebar(tier: str, points: int) -> str:
+    """Richer tier badge for the sidebar — includes points balance."""
+    if tier == "4U+":
+        return (
+            f'<div style="background:linear-gradient(135deg,#00529B,#0070CC);'
+            f'border-radius:10px;padding:10px 14px;margin-bottom:8px;">'
+            f'<div style="color:#FFD700;font-weight:800;font-size:0.9rem;">★ for U+ Member</div>'
+            f'<div style="color:#A8C8F0;font-size:0.82rem;margin-top:2px;">{points:,} pts</div>'
+            f'</div>'
+        )
+    return (
+        f'<div style="background:#3B5998;border-radius:10px;padding:10px 14px;margin-bottom:8px;">'
+        f'<div style="color:#E0E0E0;font-weight:700;font-size:0.9rem;">Standard Member</div>'
+        f'<div style="color:#A8C8F0;font-size:0.82rem;margin-top:2px;">{points:,} pts</div>'
+        f'</div>'
+    )
 
 
 def score_bar(score: float) -> str:
@@ -448,6 +514,27 @@ def load_gr_offers(balance: int) -> pd.DataFrame:
               AND o.tier_1_points_threshold <= :balance
             ORDER BY o.tier_1_points_threshold, o.discount_type_cd
         """), conn, params={"balance": int(balance)})
+
+
+@st.cache_data(ttl=300)
+def load_gr_scored_offers(hid: str, balance: int) -> pd.DataFrame:
+    """Load GR offers for a household ranked by propensity_gr score, filtered to eligible tiers."""
+    with _engine.connect() as conn:
+        return pd.read_sql(text("""
+            SELECT
+                so.client_offer_id, so.offer_dsc, so.score, so.rank,
+                o.discount_type_cd, o.discount_value,
+                o.tier_1_points_threshold AS pts_threshold,
+                o.program_subtype,
+                o.categories_txt AS category,
+                (o.end_dt - CURRENT_DATE)::int AS days_left
+            FROM c360_scored_offers so
+            JOIN c360_offer o ON o.client_offer_id = so.client_offer_id
+            WHERE so.model_type = 'propensity_gr'
+              AND so.household_id = :hid
+              AND o.tier_1_points_threshold <= :balance
+            ORDER BY so.score DESC
+        """), conn, params={"hid": hid, "balance": int(balance)})
 
 
 def logout():
@@ -538,17 +625,24 @@ def unclip_offer_local(hid: str, offer_id: str):
 # ─── PAGE: LOGIN ──────────────────────────────────────────────────────────────
 
 def page_login():
-    st.html(f"""
-    <div class="login-box">
-        <img src="data:image/svg+xml;base64,{LOGO_B64}" width="180" style="margin-bottom:16px;"/>
-        <p style="color:#888; margin-bottom:28px; font-size:0.95rem;">Personalised Loyalty Offer Engine</p>
-    </div>
-    """)
+    # Centred card layout
+    _, mid, _ = st.columns([1, 1.6, 1])
+    with mid:
+        st.html(f"""
+        <div style="background:white; border-radius:20px; padding:44px 40px 36px 40px;
+                    box-shadow:0 8px 40px rgba(0,82,155,0.13); text-align:center; margin-top:32px;">
+            <img src="data:image/svg+xml;base64,{LOGO_B64}" width="200"
+                 style="margin-bottom:20px; display:block; margin-left:auto; margin-right:auto;"/>
+            <div style="font-size:1.35rem; font-weight:800; color:#00529B; margin-bottom:4px;">
+                SmartRewards
+            </div>
+            <div style="font-size:0.92rem; color:#6B7280; margin-bottom:32px;">
+                AI-Powered Personalised Loyalty Offers &nbsp;·&nbsp; <i>for U</i> Program
+            </div>
+        </div>
+        """)
 
-    col = st.columns([1, 2, 1])[1]
-    with col:
-        st.markdown("### Sign in to your account")
-        st.caption("Select a household to continue — no password required for demo")
+        st.html("""<div style="height:16px;"></div>""")
 
         display = customers_df.apply(
             lambda r: (
@@ -558,9 +652,15 @@ def page_login():
             axis=1
         )
         options = ["— Select a customer —"] + display.tolist()
+
+        st.markdown(
+            '<p style="font-weight:600; color:#374151; margin-bottom:4px; font-size:0.9rem;">Select a customer account</p>',
+            unsafe_allow_html=True
+        )
         choice = st.selectbox("Customer", options, label_visibility="collapsed")
 
-        if st.button("Sign In", width="stretch", type="primary"):
+        st.html("""<div style="height:8px;"></div>""")
+        if st.button("Sign In →", use_container_width=True, type="primary"):
             if choice == "— Select a customer —":
                 st.warning("Please select a customer to continue.")
             else:
@@ -569,8 +669,13 @@ def page_login():
                 st.session_state.page = "dashboard"
                 st.rerun()
 
-        st.markdown("---")
-        if st.button("Explore Customer Segments", width="stretch"):
+        st.html("""<div style="height:6px;"></div>""")
+        st.markdown(
+            '<p style="text-align:center; color:#9CA3AF; font-size:0.78rem;">No password required — hackathon demo</p>',
+            unsafe_allow_html=True
+        )
+        st.html("""<div style="height:12px;"></div>""")
+        if st.button("Explore Customer Segments", use_container_width=True):
             st.session_state.page = "segments"
             st.rerun()
 
@@ -604,7 +709,7 @@ def page_dashboard():
             st.session_state.household_id = selected_hid
             st.rerun()
 
-        st.caption(f"Tier: **{customer['clv_tier_level_id']}**")
+        st.html(tier_badge_sidebar(customer["clv_tier_level_id"], customer["current_point_balance"]))
         clipped_count = len(get_clipped(hid))
         if clipped_count:
             st.markdown(f"✂️ **{clipped_count} offer{'s' if clipped_count > 1 else ''} clipped**")
@@ -612,7 +717,7 @@ def page_dashboard():
         nav = st.radio(
             "Navigate",
             ["My Offers", "My Rewards", "My Clipped Offers", "My Profile", "Segment Explorer",
-             "Compare Customers", "Compare Models", "How Offers Are Scored", "Feature Engineer", "Demo Script"],
+             "Compare Customers", "Compare Models", "Feature Weight Studio", "How Offers Are Scored", "Feature Engineer", "Demo Script"],
             label_visibility="collapsed"
         )
         st.markdown("---")
@@ -639,6 +744,8 @@ def page_dashboard():
         render_comparison(hid)
     elif nav == "Compare Models":
         render_model_comparison(hid)
+    elif nav == "Feature Weight Studio":
+        render_weight_studio(hid)
     elif nav == "How Offers Are Scored":
         render_allocation_criteria()
     elif nav == "Feature Engineer":
@@ -824,29 +931,58 @@ def render_offers(customer: dict, hid: str):
             + ' — Active at checkout</span>'
         ) if clipped else ""
 
+        icon       = category_icon(row.get("category_nm", ""))
+        disc_color = discount_color(row["discount_type_cd"])
+        disc_label = format_discount(row["discount_value"], row["discount_type_cd"])
+        border_style = "border-color:#1A7A5E; background:#F0FBF6;" if clipped else ""
+
         card_col, btn_col = st.columns([5, 1])
         with card_col:
             st.html(f"""
-            <div class="offer-card" style="{'border-color:#1A7A5E; background:#F0FBF6;' if clipped else ''}">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                    <div>
-                        <span class="offer-rank">#{i}</span>&nbsp;&nbsp;
-                        <span class="offer-name">{row['offer_dsc']}</span>
-                        &nbsp;&nbsp;{channel_pill(row['delivery_channel_cd'])}
-                        &nbsp;&nbsp;{boost_html}
+            <div class="offer-card" style="{border_style}">
+                <div style="display:flex; gap:14px; align-items:flex-start;">
+
+                    <!-- Category icon block -->
+                    <div style="min-width:48px; height:48px; background:#F0F4FA; border-radius:12px;
+                                display:flex; align-items:center; justify-content:center;
+                                font-size:1.6rem; flex-shrink:0;">
+                        {icon}
                     </div>
-                    <div style="text-align:right;">
-                        <span class="offer-discount">{format_discount(row['discount_value'], row['discount_type_cd'])}</span><br>
-                        <span style="color:#888; font-size:0.8rem;">Score: <b>{row['score']}</b> / 100</span>
+
+                    <!-- Main content -->
+                    <div style="flex:1; min-width:0;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+                            <div>
+                                <span class="offer-rank">#{i}</span>&nbsp;
+                                <span class="offer-name">{row['offer_dsc']}</span>
+                            </div>
+                            <!-- Discount badge -->
+                            <div style="text-align:right; flex-shrink:0;">
+                                <span style="color:{disc_color}; font-weight:800; font-size:1.15rem;
+                                             white-space:nowrap;">{disc_label}</span>
+                            </div>
+                        </div>
+
+                        <!-- Pills row -->
+                        <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+                            {channel_pill(row['delivery_channel_cd'])}
+                            {('&nbsp;' + boost_html) if boost_html else ''}
+                            {expiry_html}
+                        </div>
+
+                        <!-- Score bar + meta -->
+                        <div style="margin-top:8px;">
+                            <div style="display:flex; justify-content:space-between;
+                                        font-size:0.75rem; color:#94A3B8; margin-bottom:3px;">
+                                <span>{row.get('category_nm','')}</span>
+                                <span>Score: <b style="color:#475569;">{row['score']:.0f}</b> / 100</span>
+                            </div>
+                            {score_bar(row['score'])}
+                        </div>
+
+                        {('<div style="margin-top:6px;">' + clipped_html + '</div>') if clipped_html else ''}
                     </div>
                 </div>
-                <div style="color:#888; font-size:0.82rem; margin-top:6px;">
-                    Channel: <b>{row['delivery_channel_cd']}</b>
-                    {'&nbsp;&nbsp;<span style="color:#856404; font-size:0.78rem;">&#9733; Multiple clips allowed</span>' if gr else ''}
-                    {'&nbsp;&nbsp;' + expiry_html if expiry_html else ''}
-                </div>
-                {score_bar(row['score'])}
-                <div style="margin-top:8px;">{clipped_html}</div>
             </div>
             """)
 
@@ -1015,78 +1151,87 @@ def render_rewards(customer: dict, hid: str):
     </div>
     """)
 
-    gr_df = load_gr_offers(balance)
+    gr_df = load_gr_scored_offers(hid, balance)
     if gr_df.empty:
         st.info("You don't have enough points for any Grocery Rewards yet. Keep shopping to earn points!")
         return
 
-    ALL_TIERS = [100, 200, 300, 400, 500, 700, 1000, 1200]
-    eligible_tiers = sorted(gr_df["pts_threshold"].unique().tolist())
+    st.caption(f"**{len(gr_df)} rewards available** — ranked by your personalised score. Highest value for you shown first.")
+    st.markdown("")
 
-    # Tier tab labels
-    tab_labels = [f"{t} pts" for t in eligible_tiers]
-    tabs = st.tabs(tab_labels)
+    for idx, (_, row) in enumerate(gr_df.iterrows(), start=1):
+        tier        = int(row["pts_threshold"])
+        disc_type   = row["discount_type_cd"]
+        days_left   = int(row["days_left"]) if row["days_left"] is not None else None
+        score       = float(row["score"])
+        icon        = category_icon(row.get("category", ""))
 
-    for tab, tier in zip(tabs, eligible_tiers):
-        with tab:
-            tier_offers = gr_df[gr_df["pts_threshold"] == tier]
-            basket  = tier_offers[tier_offers["discount_type_cd"] == "GROCERY_REWARD"]
-            dept    = tier_offers[tier_offers["discount_type_cd"] == "DEPT_REWARD"]
-            free    = tier_offers[tier_offers["discount_type_cd"] == "FREE_ITEM"]
+        disc_color  = discount_color(disc_type)
+        disc_label  = format_discount(row["discount_value"], disc_type)
 
-            # ── Basket & Dept discounts ───────────────────────────────────────
-            disc_rows = pd.concat([basket, dept])
-            if not disc_rows.empty:
-                cols = st.columns(min(len(disc_rows), 3))
-                for col, (_, row) in zip(cols, disc_rows.iterrows()):
-                    disc_type = row["discount_type_cd"]
-                    badge_color = "#DC2626" if disc_type == "GROCERY_REWARD" else "#1D4ED8"
-                    badge_label = f"${row['discount_value']:.0f} OFF"
-                    dept_note = f"Any {row['category']} Purchase" if disc_type == "DEPT_REWARD" else "Your Next Purchase"
-                    days_left = int(row["days_left"]) if row["days_left"] is not None else None
-                    expiry = f'<span style="font-size:0.72rem; color:#6B7280;">Expires in {days_left}d</span>' if days_left and days_left <= 14 else ""
-                    with col:
-                        st.html(f"""
-                        <div style="border:1.5px solid #E5E7EB; border-radius:12px; padding:16px;
-                                    background:#fff; min-height:160px;">
-                            <div style="color:{badge_color}; font-size:1rem; font-weight:800;
-                                        margin-bottom:6px;">{badge_label}</div>
-                            <div style="font-size:0.88rem; font-weight:600; color:#111827;">{dept_note}</div>
-                            <div style="font-size:0.78rem; color:#6B7280; margin-top:4px;">
-                                of ${row['discount_value']:.0f} or more.*
+        # Expiry pill
+        if days_left is not None and days_left <= 3:
+            expiry_html = f'<span style="background:#FEE2E2; color:#991B1B; font-size:0.75rem; font-weight:700; padding:2px 8px; border-radius:10px;">⏰ Expires in {days_left}d</span>'
+        elif days_left is not None and days_left <= 7:
+            expiry_html = f'<span style="background:#FEF3C7; color:#92400E; font-size:0.75rem; font-weight:600; padding:2px 8px; border-radius:10px;">Expires in {days_left}d</span>'
+        else:
+            expiry_html = ""
+
+        pts_pill    = f'<span style="background:#FEF3C7; color:#92400E; font-size:0.72rem; font-weight:700; padding:2px 8px; border-radius:99px;">{tier:,} pts</span>'
+        score_pct   = min(score, 100)
+
+        card_col, btn_col = st.columns([5, 1])
+        with card_col:
+            st.html(f"""
+            <div class="offer-card">
+                <div style="display:flex; gap:14px; align-items:flex-start;">
+
+                    <!-- Category icon block -->
+                    <div style="min-width:48px; height:48px; background:#FEF3C7; border-radius:12px;
+                                display:flex; align-items:center; justify-content:center;
+                                font-size:1.6rem; flex-shrink:0;">
+                        {icon}
+                    </div>
+
+                    <!-- Main content -->
+                    <div style="flex:1; min-width:0;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+                            <div>
+                                <span class="offer-rank">#{idx}</span>&nbsp;
+                                <span class="offer-name">{row['offer_dsc']}</span>
                             </div>
-                            {expiry}
+                            <!-- Discount badge -->
+                            <span style="color:{disc_color}; font-weight:800; font-size:1.15rem;
+                                         white-space:nowrap; flex-shrink:0;">{disc_label}</span>
                         </div>
-                        """)
-                        st.button(f"Use {tier} pts", key=f"gr_disc_{hid}_{tier}_{row['client_offer_id']}",
-                                  use_container_width=True, type="primary",
-                                  on_click=clip_offer_local, args=(hid, row["client_offer_id"], True, tier))
 
-            # ── Free items ────────────────────────────────────────────────────
-            if not free.empty:
-                if not disc_rows.empty:
-                    st.markdown("##### Free Items")
-                free_cols = st.columns(3)
-                for idx, (_, row) in enumerate(free.iterrows()):
-                    days_left = int(row["days_left"]) if row["days_left"] is not None else None
-                    expiry = f'<span style="font-size:0.72rem; color:#6B7280;">Expires in {days_left}d</span>' if days_left and days_left <= 14 else ""
-                    col = free_cols[idx % 3]
-                    with col:
-                        st.html(f"""
-                        <div style="border:1.5px solid #E5E7EB; border-radius:12px; padding:16px;
-                                    background:#fff; min-height:160px;">
-                            <div style="color:#DC2626; font-size:1rem; font-weight:800;
-                                        margin-bottom:6px;">FREE</div>
-                            <div style="font-size:0.85rem; font-weight:600; color:#111827; line-height:1.3;">
-                                {row['offer_dsc'].replace(f' — {tier} pts', '').replace(f'FREE ', '')}
-                            </div>
-                            <div style="font-size:0.75rem; color:#6B7280; margin-top:4px;">Limit 1.</div>
-                            {expiry}
+                        <!-- Pills row -->
+                        <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+                            {pts_pill}
+                            {expiry_html}
                         </div>
-                        """)
-                        st.button(f"Use {tier} pts", key=f"gr_free_{hid}_{tier}_{row['client_offer_id']}",
-                                  use_container_width=True, type="primary",
-                                  on_click=clip_offer_local, args=(hid, row["client_offer_id"], True, tier))
+
+                        <!-- Score bar + meta -->
+                        <div style="margin-top:8px;">
+                            <div style="display:flex; justify-content:space-between;
+                                        font-size:0.75rem; color:#94A3B8; margin-bottom:3px;">
+                                <span>{row.get('category','')}</span>
+                                <span>Match score: <b style="color:#475569;">{score:.0f}</b> / 100</span>
+                            </div>
+                            <div style="background:#EEF2F7; border-radius:6px; height:10px;">
+                                <div style="width:{score_pct:.0f}%; height:10px; border-radius:6px;
+                                            background:linear-gradient(90deg,#F59E0B,#D97706);"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            """)
+        with btn_col:
+            st.markdown("<div style='margin-top:18px;'></div>", unsafe_allow_html=True)
+            st.button(f"Use {tier} pts", key=f"gr_ranked_{hid}_{row['client_offer_id']}",
+                      use_container_width=True, type="primary",
+                      on_click=clip_offer_local, args=(hid, row["client_offer_id"], True, tier))
 
 
 def render_clipped_offers(hid: str):
@@ -1446,6 +1591,396 @@ BUSINESS_RULES = [
         "desc":  "Offers operate at three levels of granularity: ITEM (specific UPCs), CATEGORY (any product in a department), or BASKET (whole-shop offers). Item-level matches get a higher affinity boost than category-level.",
     },
 ]
+
+
+# ─── FEATURE WEIGHT STUDIO ────────────────────────────────────────────────────
+
+# Propensity model — 19 features with business-friendly labels
+# invert=True means higher raw value = worse for customer (score will be 1 - normalised)
+# Standard propensity model — 16 features (no points; standard offers don't require points)
+_PROPENSITY_FEATURES = [
+    {"col": "category_affinity",  "label": "Category Affinity",          "group": "Personalisation", "invert": False},
+    {"col": "channel_match",      "label": "Channel Preference Match",   "group": "Personalisation", "invert": False},
+    {"col": "discount_value",     "label": "Offer Discount Value",       "group": "Offer Quality",   "invert": False},
+    {"col": "redemption_rate",    "label": "Historical Redemption Rate", "group": "Offer Quality",   "invert": False},
+    {"col": "days_until_expiry",  "label": "Days Until Offer Expires",   "group": "Offer Quality",   "invert": False},
+    {"col": "is_4uplus",          "label": "for U+ Member",              "group": "Loyalty",         "invert": False},
+    {"col": "days_since_last_txn","label": "Recency (days since visit)", "group": "Engagement",      "invert": True},
+    {"col": "churn_risk",         "label": "Churn Risk Score",           "group": "Engagement",      "invert": True},
+    {"col": "doordash",           "label": "DoorDash User",              "group": "Channels",        "invert": False},
+    {"col": "instacart",          "label": "Instacart User",             "group": "Channels",        "invert": False},
+    {"col": "uber",               "label": "Uber Eats User",             "group": "Channels",        "invert": False},
+    {"col": "gas_rewards",        "label": "Gas Rewards User",           "group": "Channels",        "invert": False},
+    {"col": "household_size",     "label": "Household Size",             "group": "Demographics",    "invert": False},
+    {"col": "num_children",       "label": "Number of Children",         "group": "Demographics",    "invert": False},
+    {"col": "is_j4u_exclusive",   "label": "for U+ Exclusive Offer",     "group": "Offer Fit",       "invert": False},
+    {"col": "is_freshpass_offer",  "label": "FreshPass Exclusive",        "group": "Offer Fit",       "invert": False},
+]
+
+_GROUP_COLORS = {
+    "Personalisation": "#00529B",
+    "Offer Quality":   "#2E9E6B",
+    "Loyalty":         "#F59E0B",
+    "Engagement":      "#E31837",
+    "Channels":        "#7C3AED",
+    "Demographics":    "#0891B2",
+    "Offer Fit":       "#64748B",
+}
+
+
+@st.cache_data(ttl=300)
+def load_propensity_feature_matrix(hid: str) -> pd.DataFrame:
+    """Return per-offer feature matrix + original propensity score for one household."""
+    with _engine.connect() as conn:
+        cust = pd.read_sql(text("""
+            SELECT
+                cp.household_id,
+                cp.clv_tier_level_id,
+                cp.current_point_balance,
+                cp.points_expiring_next_month,
+                cp.fav_channel,
+                CASE WHEN cp.clv_tier_level_id = '4U+' THEN 1 ELSE 0 END  AS is_4uplus,
+                COALESCE(cp.gas_rewards_ind_6m::int, 0)                    AS gas_rewards,
+                COALESCE(cp.doordash_txn_ind_6m::int, 0)                   AS doordash,
+                COALESCE(cp.instacart_txn_ind_6m::int, 0)                  AS instacart,
+                COALESCE(cp.uber_txn_ind_6m::int, 0)                       AS uber,
+                COALESCE(cp.household_size, 1)                             AS household_size,
+                COALESCE(cp.num_of_children, 0)                            AS num_children,
+                COALESCE(cp.churn_risk_score_nbr, 0.5)                     AS churn_risk,
+                COALESCE((CURRENT_DATE - MAX(t.txn_dte))::int, 999)        AS days_since_last_txn
+            FROM c360_customer_profile cp
+            LEFT JOIN c360_txn t ON t.household_id = cp.household_id
+            WHERE cp.household_id = :hid AND cp.head_household_ind = TRUE
+            GROUP BY cp.household_id, cp.clv_tier_level_id, cp.current_point_balance,
+                     cp.points_expiring_next_month, cp.fav_channel, cp.gas_rewards_ind_6m,
+                     cp.doordash_txn_ind_6m, cp.instacart_txn_ind_6m, cp.uber_txn_ind_6m,
+                     cp.household_size, cp.num_of_children, cp.churn_risk_score_nbr
+        """), conn, params={"hid": hid})
+
+        offers_raw = pd.read_sql(text("""
+            SELECT
+                so.client_offer_id,
+                so.offer_dsc,
+                so.score AS propensity_score,
+                so.rank  AS propensity_rank,
+                o.delivery_channel_cd,
+                o.discount_value,
+                o.tier_1_points_threshold,
+                o.is_appliable_to_j4u_ind::int    AS is_j4u_exclusive,
+                o.is_freshpass_offer_ind::int      AS is_freshpass_offer,
+                (o.end_dt - CURRENT_DATE)::int     AS days_until_expiry,
+                COALESCE(os.red_pct, 0)            AS redemption_rate,
+                os.rep_category_nm                 AS category_nm
+            FROM c360_scored_offers so
+            JOIN c360_offer o ON o.client_offer_id = so.client_offer_id
+            LEFT JOIN c360_offer_summary os ON os.client_offer_id = so.client_offer_id
+            WHERE so.household_id = :hid
+              AND so.model_type = 'propensity'
+              AND o.program_type != 'Grocery Reward'
+        """), conn, params={"hid": hid})
+
+        affinity = pd.read_sql(text("""
+            SELECT category_nm, affinity_score AS category_affinity
+            FROM c360_cat_affinity
+            WHERE household_id = :hid
+        """), conn, params={"hid": hid})
+
+    if cust.empty or offers_raw.empty:
+        return pd.DataFrame()
+
+    c = cust.iloc[0].to_dict()
+    df = offers_raw.copy()
+
+    # Merge affinity
+    df = df.merge(affinity, on="category_nm", how="left")
+    df["category_affinity"] = df["category_affinity"].fillna(0)
+
+    # Interaction features
+    df["channel_match"] = (c["fav_channel"] == df["delivery_channel_cd"]).astype(int)
+    df["points_gap"] = (c["current_point_balance"] - df["tier_1_points_threshold"].fillna(0)).clip(lower=0)
+
+    # Broadcast customer features
+    for col in ["current_point_balance", "points_expiring_next_month", "is_4uplus",
+                "gas_rewards", "doordash", "instacart", "uber",
+                "household_size", "num_children", "churn_risk", "days_since_last_txn"]:
+        df[col] = c[col]
+
+    df["discount_value"] = df["discount_value"].fillna(0)
+    df["days_until_expiry"] = df["days_until_expiry"].fillna(30)
+
+    return df
+
+
+# Business-friendly labels + default weights (matching scoring.py WEIGHTS)
+_STUDIO_FEATURES = [
+    {
+        "col":     "transaction_affinity",
+        "label":   "Purchase History Match",
+        "desc":    "How well this offer aligns with what the customer actually buys. Based on historical category affinity scores.",
+        "default": 30,
+        "color":   "#00529B",
+    },
+    {
+        "col":     "redemption_match",
+        "label":   "Channel Preference Match",
+        "desc":    "Whether the offer's delivery channel (in-store, online, auto-clip) matches how the customer prefers to shop.",
+        "default": 25,
+        "color":   "#0073C4",
+    },
+    {
+        "col":     "points_eligibility",
+        "label":   "Points Balance Fit",
+        "desc":    "How well the customer's current loyalty points balance positions them for this offer.",
+        "default": 20,
+        "color":   "#2E9E6B",
+    },
+    {
+        "col":     "cart_affinity",
+        "label":   "Online Shopping Affinity",
+        "desc":    "Likelihood to engage based on the customer's history with DoorDash, Instacart, and Uber Eats delivery platforms.",
+        "default": 15,
+        "color":   "#F59E0B",
+    },
+    {
+        "col":     "demographic_match",
+        "label":   "Lifestyle & Demographics",
+        "desc":    "Fit based on age group, household size, children, and dietary preferences.",
+        "default": 10,
+        "color":   "#E31837",
+    },
+]
+
+
+def _render_ranking_comparison(merged: pd.DataFrame, orig_score_col: str,
+                               custom_score_col: str, orig_rank_col: str,
+                               custom_rank_col: str, orig_label: str, model_color: str):
+    """Shared side-by-side ranking table used by both model tabs."""
+    merged = merged.copy()
+    merged["rank_delta"] = merged[orig_rank_col] - merged[custom_rank_col]
+
+    header_l, header_r = st.columns(2)
+    with header_l:
+        st.html(f"""<div style="background:#F0F9FF; border:1px solid #BAE6FD; border-radius:8px;
+                    padding:8px 14px; margin-bottom:8px; font-size:0.85rem;">
+                    <b>{orig_label}</b> &nbsp;(default weights)</div>""")
+    with header_r:
+        st.html("""<div style="background:#F0FFF4; border:1px solid #BBF7D0; border-radius:8px;
+                    padding:8px 14px; margin-bottom:8px; font-size:0.85rem;">
+                    <b>🎛️ Custom Ranking</b> &nbsp;(your weights)</div>""")
+
+    for _, row in merged.sort_values(custom_rank_col).iterrows():
+        delta = int(row["rank_delta"])
+        if delta > 0:
+            delta_html = f'<span style="color:#16A34A; font-weight:700;">▲{delta}</span>'
+        elif delta < 0:
+            delta_html = f'<span style="color:#DC2626; font-weight:700;">▼{abs(delta)}</span>'
+        else:
+            delta_html = '<span style="color:#94A3B8;">—</span>'
+
+        orig_bar = min(int(row[orig_score_col]), 100)
+        cust_bar = min(int(row[custom_score_col]), 100)
+
+        col_l, col_r = st.columns(2)
+        with col_l:
+            st.html(f"""
+            <div style="padding:8px 12px; margin-bottom:5px; border-radius:6px;
+                        background:#F8FAFC; border:1px solid #E2E8F0;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <span style="color:#64748B; font-size:0.78rem; font-weight:700;">#{int(row[orig_rank_col])}</span>
+                        &nbsp;<span style="font-size:0.85rem;">{row['offer_dsc']}</span>
+                    </div>
+                    <span style="font-size:0.8rem; font-weight:700; color:{model_color};">{orig_bar:.0f}</span>
+                </div>
+                <div style="background:#EEF2F7; border-radius:3px; height:4px; margin-top:5px;">
+                    <div style="width:{orig_bar}%; height:4px; border-radius:3px; background:{model_color};"></div>
+                </div>
+            </div>""")
+        with col_r:
+            st.html(f"""
+            <div style="padding:8px 12px; margin-bottom:5px; border-radius:6px;
+                        background:#F0FFF4; border:1px solid #BBF7D0;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <span style="color:#15803D; font-size:0.78rem; font-weight:700;">#{int(row[custom_rank_col])}</span>
+                        &nbsp;{delta_html}
+                        &nbsp;<span style="font-size:0.85rem;">{row['offer_dsc']}</span>
+                    </div>
+                    <span style="font-size:0.8rem; font-weight:700; color:#15803D;">{cust_bar:.0f}</span>
+                </div>
+                <div style="background:#DCFCE7; border-radius:3px; height:4px; margin-top:5px;">
+                    <div style="width:{cust_bar}%; height:4px; border-radius:3px; background:#16A34A;"></div>
+                </div>
+            </div>""")
+
+
+def render_weight_studio(hid: str):
+    st.subheader("Feature Weight Studio")
+    st.caption("Adjust how much each factor influences the offer ranking. Changes are session-only — they don't affect the live scoring engine.")
+
+    tab_rb, tab_ml = st.tabs(["📋 Rule-Based (5 features)", "🤖 Propensity / XGBoost (19 features)"])
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # TAB 1 — RULE-BASED
+    # ══════════════════════════════════════════════════════════════════════════
+    with tab_rb:
+        st.caption("The rule-based engine uses 5 manually-weighted scoring components. Adjust their relative importance below.")
+
+        # initialise weights
+        for feat in _STUDIO_FEATURES:
+            if f"ws_{feat['col']}" not in st.session_state:
+                st.session_state[f"ws_{feat['col']}"] = 100
+
+        st.html("""<div style="font-size:0.8rem; color:#888; margin-bottom:8px;">
+            0% = ignore &nbsp;|&nbsp; 100% = default &nbsp;|&nbsp; 200% = double importance</div>""")
+
+        col1, col2, col3 = st.columns(3)
+        cols = [col1, col2, col3, col1, col2]
+        for i, feat in enumerate(_STUDIO_FEATURES):
+            with cols[i]:
+                pct = st.slider(
+                    feat["label"],
+                    min_value=0, max_value=200, step=5,
+                    value=st.session_state[f"ws_{feat['col']}"],
+                    key=f"ws_slider_{feat['col']}",
+                    help=feat["desc"],
+                )
+                st.session_state[f"ws_{feat['col']}"] = pct
+                effective_w = round(feat["default"] * pct / 100, 1)
+                bar_pct = min(int(pct / 2), 100)
+                st.html(f"""<div style="font-size:0.75rem; color:#555; margin-top:-8px; margin-bottom:4px;">
+                    Effective: <b style="color:{feat['color']};">{effective_w}%</b>
+                    <div style="background:#EEF2F7; border-radius:3px; height:4px; margin-top:3px;">
+                        <div style="width:{bar_pct}%; height:4px; border-radius:3px; background:{feat['color']};"></div>
+                    </div></div>""")
+
+        _, reset_col = st.columns([4, 1])
+        with reset_col:
+            if st.button("Reset", key="ws_rb_reset", use_container_width=True):
+                for feat in _STUDIO_FEATURES:
+                    st.session_state[f"ws_{feat['col']}"] = 100
+                st.rerun()
+
+        # compute
+        cust_rb = scored_df[
+            (scored_df["household_id"] == hid) &
+            (scored_df["model_type"] == "rule_based") &
+            (scored_df["program_type"] != "Grocery Reward")
+        ].copy()
+
+        if cust_rb.empty:
+            st.info("No rule-based scores for this customer.")
+        else:
+            custom_score = sum(
+                cust_rb[f["col"]] * (f["default"] * st.session_state[f"ws_{f['col']}"] / 100)
+                for f in _STUDIO_FEATURES
+            )
+            cust_rb["custom_score"] = custom_score
+            cust_rb.loc[cust_rb["recency_boost_applied"] == True, "custom_score"] *= 1.2
+            cust_rb.loc[cust_rb["tier_multiplier_applied"] == True, "custom_score"] *= 1.5
+            cust_rb["custom_score"] = cust_rb["custom_score"].clip(upper=100)
+            cust_rb = cust_rb.sort_values("custom_score", ascending=False).reset_index(drop=True)
+            cust_rb["custom_rank"] = cust_rb.index + 1
+
+            orig = scored_df[
+                (scored_df["household_id"] == hid) &
+                (scored_df["model_type"] == "rule_based") &
+                (scored_df["program_type"] != "Grocery Reward")
+            ][["client_offer_id", "rank", "score"]].sort_values("rank").reset_index(drop=True)
+            # Re-rank within standard-only subset so orig_rank is 1,2,3... not absolute position
+            orig["orig_rank"] = orig.index + 1
+            orig = orig.rename(columns={"score": "orig_score"}).drop(columns=["rank"])
+            merged = cust_rb.merge(orig, on="client_offer_id")
+
+            st.html('<div class="section-heading" style="margin-top:20px;">Ranking Comparison</div>')
+            _render_ranking_comparison(merged, "orig_score", "custom_score",
+                                       "orig_rank", "custom_rank",
+                                       "📋 Original Ranking", "#00529B")
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # TAB 2 — PROPENSITY
+    # ══════════════════════════════════════════════════════════════════════════
+    with tab_ml:
+        st.caption("The XGBoost model uses 19 raw features. Here each feature contributes proportionally to a custom linear score — letting you explore what the model would rank differently if each signal were amplified or suppressed.")
+
+        feat_matrix = load_propensity_feature_matrix(hid)
+        if feat_matrix.empty:
+            st.info("No propensity scores for this customer.")
+        else:
+            # initialise weights
+            for feat in _PROPENSITY_FEATURES:
+                if f"ws_ml_{feat['col']}" not in st.session_state:
+                    st.session_state[f"ws_ml_{feat['col']}"] = 100
+
+            st.html("""<div style="font-size:0.8rem; color:#888; margin-bottom:8px;">
+                0% = ignore &nbsp;|&nbsp; 100% = equal weight &nbsp;|&nbsp; 200% = double importance
+                &nbsp;&nbsp;<i>(features marked ↓ are inverted — lower raw value is better)</i></div>""")
+
+            # group sliders by group label
+            groups = {}
+            for feat in _PROPENSITY_FEATURES:
+                groups.setdefault(feat["group"], []).append(feat)
+
+            for group_name, feats in groups.items():
+                color = _GROUP_COLORS.get(group_name, "#64748B")
+                st.html(f'<div style="font-size:0.8rem; font-weight:700; color:{color}; '
+                        f'margin-top:12px; margin-bottom:4px; border-left:3px solid {color}; '
+                        f'padding-left:8px;">{group_name}</div>')
+                cols_ml = st.columns(min(len(feats), 4))
+                for i, feat in enumerate(feats):
+                    with cols_ml[i % 4]:
+                        label = feat["label"] + (" ↓" if feat["invert"] else "")
+                        pct = st.slider(
+                            label,
+                            min_value=0, max_value=200, step=5,
+                            value=st.session_state[f"ws_ml_{feat['col']}"],
+                            key=f"ws_ml_slider_{feat['col']}",
+                        )
+                        st.session_state[f"ws_ml_{feat['col']}"] = pct
+
+            _, reset_col_ml = st.columns([4, 1])
+            with reset_col_ml:
+                if st.button("Reset", key="ws_ml_reset", use_container_width=True):
+                    for feat in _PROPENSITY_FEATURES:
+                        st.session_state[f"ws_ml_{feat['col']}"] = 100
+                    st.rerun()
+
+            # normalise features and compute custom score
+            fm = feat_matrix.copy()
+            custom_score = pd.Series(0.0, index=fm.index)
+            for feat in _PROPENSITY_FEATURES:
+                col = feat["col"]
+                col_min, col_max = fm[col].min(), fm[col].max()
+                if col_max > col_min:
+                    norm = (fm[col] - col_min) / (col_max - col_min)
+                else:
+                    norm = pd.Series(0.5, index=fm.index)
+                if feat["invert"]:
+                    norm = 1.0 - norm
+                weight = st.session_state[f"ws_ml_{feat['col']}"] / 100.0
+                custom_score += norm * weight
+
+            fm["custom_score_raw"] = custom_score
+            # scale to 0–100 for display
+            s_min, s_max = custom_score.min(), custom_score.max()
+            if s_max > s_min:
+                fm["custom_score"] = (custom_score - s_min) / (s_max - s_min) * 100
+            else:
+                fm["custom_score"] = 50.0
+
+            fm = fm.sort_values("custom_score", ascending=False).reset_index(drop=True)
+            fm["custom_rank"] = fm.index + 1
+            # scale original propensity score 0-100 for display
+            p_min, p_max = fm["propensity_score"].min(), fm["propensity_score"].max()
+            if p_max > p_min:
+                fm["orig_score_disp"] = (fm["propensity_score"] - p_min) / (p_max - p_min) * 100
+            else:
+                fm["orig_score_disp"] = 50.0
+
+            st.html('<div class="section-heading" style="margin-top:20px;">Ranking Comparison</div>')
+            _render_ranking_comparison(fm, "orig_score_disp", "custom_score",
+                                       "propensity_rank", "custom_rank",
+                                       "🤖 Original XGBoost Ranking", "#7C3AED")
 
 
 def render_allocation_criteria():

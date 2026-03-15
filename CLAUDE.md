@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**SmartRewards** — personalised loyalty offer ranking engine for Albertsons / Safeway *for U* program. Two scoring models run side by side: a rule-based engine and an XGBoost propensity model. Results served via FastAPI and an interactive Streamlit demo UI. All data in PostgreSQL mirroring the Albertsons C360 BigQuery schema.
+**SmartRewards** — personalised loyalty offer ranking engine for Albertsons / Safeway *for U* program. Three scoring models run side by side: a rule-based engine, an XGBoost standard propensity model, and an XGBoost GR propensity model. Results served via FastAPI and an interactive Streamlit demo UI. All data in PostgreSQL mirroring the Albertsons C360 BigQuery schema.
 
 ## Setup & Run
 
@@ -23,9 +23,9 @@ python3 files/data/generate_data.py
 # 2. Run rule-based scoring → writes model_type='rule_based' rows
 python3 files/engine/scoring.py
 
-# 3. Train + run propensity model → writes model_type='propensity' rows
-python3 files/engine/scoring_ml.py           # uses saved model.pkl if exists
-python3 files/engine/scoring_ml.py --retrain # force retrain from scratch
+# 3. Train + run propensity models → writes model_type='propensity' and 'propensity_gr' rows
+python3 files/engine/scoring_ml.py           # uses saved model_standard.pkl / model_gr.pkl if they exist
+python3 files/engine/scoring_ml.py --retrain # force retrain both models from scratch
 
 # 4. Start API  →  http://localhost:8000/docs
 uvicorn files.api.main:app --reload --port 8000
@@ -48,14 +48,16 @@ python3 docs/render_diagrams.py
 
 ```
 files/
-  data/generate_data.py    — Seeds all 18 PostgreSQL tables in dependency order
-  engine/scoring.py        — Rule-based batch engine; writes model_type='rule_based'
-  engine/scoring_ml.py     — XGBoost propensity engine; writes model_type='propensity'
-  engine/model_metadata.json — AUC, feature importances written after each ML training run
-  engine/model.pkl           — Saved XGBoost model (joblib); delete to force retrain
-  api/main.py              — FastAPI REST API (port 8000)
-  app.py                   — Streamlit demo UI (port 8501)
-  db/schema.sql            — Full 18-table PostgreSQL schema
+  data/generate_data.py      — Seeds all 18 PostgreSQL tables in dependency order
+  engine/scoring.py          — Rule-based batch engine; writes model_type='rule_based'
+  engine/scoring_ml.py       — Two XGBoost models; writes model_type='propensity' and 'propensity_gr'
+  engine/model_standard.pkl  — Saved standard XGBoost model (joblib); delete to force retrain
+  engine/model_gr.pkl        — Saved GR XGBoost model (joblib); delete to force retrain
+  engine/model_metadata.json     — AUC + feature importances for standard model
+  engine/model_gr_metadata.json  — AUC + feature importances for GR model
+  api/main.py                — FastAPI REST API (port 8000)
+  app.py                     — Streamlit demo UI (port 8501)
+  db/schema.sql              — Full 18-table PostgreSQL schema
 docs/
   propensity_model.md      — Full ML training documentation (features, labels, evaluation)
   architecture.md          — 5 Mermaid diagrams (system, scoring, DB, ML, stories)
@@ -81,15 +83,15 @@ Seeded in dependency order:
 - Scoring unit: `household_id` (not `retail_customer_uuid`)
 - Offer key: `client_offer_id` (not `oms_offer_id`)
 - Filter `head_household_ind = TRUE` for one row per household
-- `c360_scored_offers` PK is `(household_id, client_offer_id, model_type)` — both models coexist
+- `c360_scored_offers` PK is `(household_id, client_offer_id, model_type)` — all three models coexist
 
 **Catalog sizes:** 71 UPCs (30 real Dairy + 41 synthetic across 10 departments), 64 offers (6 real + 58 synthetic), 120 households.
 
 **Departments:** `Dairy Eggs Cheese`, `Grocery`, `Produce`, `Bakery`, `Meat`, `Frozen`, `Household`, `Fuel`, `Seafood`, `Deli` — all 10 in `ALL_CATEGORIES` and `dept_weights` for transaction generation.
 
-## Two Scoring Models
+## Three Scoring Models
 
-Both write to `c360_scored_offers` with `TOP_N_OFFERS = 15` per household. The UI separates GR and standard offers; the extra 5 slots ensure 10 standard offers remain after filtering GR out.
+Standard and GR offers are scored into **separate pools** — `TOP_N_STANDARD = 10` standard offers + `TOP_N_GR = 5` GR offers per household. This prevents GR offers from crowding out standard offers for high-balance customers. `scoring.py` splits by `discount_type_cd` after scoring; `scoring_ml.py` achieves this naturally since `score_standard_pairs` and `score_gr_pairs` are separate calls each with their own `top_n`.
 
 ### Rule-Based (`model_type = 'rule_based'`) — `files/engine/scoring.py`
 
@@ -111,17 +113,26 @@ Multipliers: ×1.2 Recency Boost (`days_since_last_txn ≤ 7`), ×1.5 Tier Multi
 - Weighted: points eligibility 40%, category affinity 25%, value/point 15%, GR history 15% (floor 0.3), recency 5%
 - ×1.3 expiry multiplier if `points_expiring_next_month >= tier_1_points_threshold`
 
-### Propensity Model (`model_type = 'propensity'`) — `files/engine/scoring_ml.py`
+### Standard Propensity Model (`model_type = 'propensity'`) — `files/engine/scoring_ml.py`
 
-XGBoost classifier trained on `c360_clips` + `c360_redemptions`:
-- **Positive (label=1):** clips with a matching redemption (418)
-- **Negative (label=0):** clips with no redemption + eligible pairs never clipped (1,957)
-- **Total training examples:** 2,375 — `scale_pos_weight = 4.682` handles class imbalance
-- **19 features:** 11 customer + 5 offer + 3 interaction (channel match, category affinity, points gap)
-- **CV AUC:** 0.522 — top features: `channel_match`, `discount_value`, `category_affinity`
-- Output: `P(redemption) × 100` as score
-- Metadata (AUC, feature importances) written to `files/engine/model_metadata.json`
-- See `docs/propensity_model.md` for full training documentation
+XGBoost classifier trained on standard offer clips + redemptions only (`program_type != 'Grocery Reward'`):
+- **16 features** — no points features (standard offers don't require points to redeem)
+- Customer (9): `is_4uplus`, `gas_rewards`, `doordash`, `instacart`, `uber`, `household_size`, `num_children`, `churn_risk`, `days_since_last_txn`
+- Offer (5): `discount_value`, `is_j4u_exclusive`, `is_freshpass_offer`, `redemption_rate`, `days_until_expiry`
+- Interaction (2): `channel_match`, `category_affinity`
+- **CV AUC: 0.626** — top features: `channel_match`, `instacart`, `redemption_rate`, `category_affinity`, `is_4uplus`
+- Model saved to `model_standard.pkl`; metadata to `model_metadata.json`
+
+### GR Propensity Model (`model_type = 'propensity_gr'`) — `files/engine/scoring_ml.py`
+
+XGBoost classifier trained on GR offer clips + redemptions only (`program_type = 'Grocery Reward'`):
+- **12 features** — points-focused; drops channel/eCommerce signals irrelevant to GR redemption
+- Customer (7): `current_point_balance`, `points_expiring_next_month`, `is_4uplus`, `household_size`, `num_children`, `churn_risk`, `days_since_last_txn`
+- Offer (3): `discount_value`, `redemption_rate`, `days_until_expiry`
+- Interaction (2): `category_affinity`, `points_gap`
+- **CV AUC: 0.572** — top features: `discount_value`, `num_children`, `points_gap`, `points_expiring_next_month`, `category_affinity`
+- Model saved to `model_gr.pkl`; metadata to `model_gr_metadata.json`
+- Used by **My Rewards** page to rank GR offers by personalised score instead of static tier tabs
 
 ### Business Rules (applied by both models before scoring)
 
@@ -142,21 +153,30 @@ XGBoost classifier trained on `c360_clips` + `c360_redemptions`:
 
 Dept discounts exist at tiers 100 (Bakery), 200 (Produce), 300 (Bakery), 400 (Meat), 500 (Produce). Tiers 700/1000/1200 are basket-only. Free items exist at tiers 100–700 (2 per tier).
 
-**GR offers are excluded from the standard ranked list** (`My Offers`). They appear only in the dedicated **`My Rewards`** page (tier tab UX) and as a teaser banner at the bottom of `My Offers`.
+**GR offers are excluded from the standard ranked list** (`My Offers`). They appear only in the dedicated **`My Rewards`** page and as a teaser banner at the bottom of `My Offers`.
 
-**Auto Clip** — opt-in toggle on My Rewards page. When ON: `auto_clip_ind = TRUE` in `c360_customer_profile`; GR tier tabs replaced with a single card showing `floor(balance/100)` cash off applied automatically at checkout; My Offers teaser banner switches to green Auto Clip status banner. Toggle writes to DB via `toggle_auto_clip(hid, enable)` and clears `load_customers` cache.
+**My Rewards page** — score-ranked card list from `c360_scored_offers WHERE model_type='propensity_gr'`, filtered to `pts_threshold <= balance`, ordered by `score DESC`. Each card shows badge, offer description, pts cost, category, expiry, and a match score bar. "Use XXX pts" button clips the offer and deducts points.
+
+**Auto Clip** — opt-in toggle on My Rewards page. When ON: `auto_clip_ind = TRUE`; GR scored list replaced with a single cash-off card; My Offers teaser banner switches to green Auto Clip status banner. Toggle writes to DB via `toggle_auto_clip(hid, enable)` and clears `load_customers` cache.
 
 ## Streamlit UI
 
-**Navigation pages:** My Offers · **My Rewards** · My Clipped Offers · My Profile · Segment Explorer · Compare Customers · **Compare Models** · How Offers Are Scored · Demo Script
+**Navigation pages:** My Offers · My Rewards · My Clipped Offers · My Profile · Segment Explorer · Compare Customers · Compare Models · **Feature Weight Studio** · How Offers Are Scored · Demo Script
 
 **My Offers:** Standard + Fuel + Points-multiplier offers only (GR filtered out). Shows top N from `scored_df` filtered by `program_type != 'Grocery Reward'`. Gold teaser banner at bottom shows eligible GR tier count.
 
-**My Rewards:** Auto Clip toggle at top. If Auto Clip OFF: tier tab UX — only tiers the customer can afford are shown, each tab has basket discount card + dept discount card + free item cards (3-col grid), "Use XXX pts" button clips the offer. If Auto Clip ON: tier tabs replaced with single cash-off card. Queries `c360_offer` directly via `load_gr_offers(balance)`, not `c360_scored_offers`.
+**My Rewards:** Score-ranked GR offers from `propensity_gr` model, gated by `pts_threshold <= balance`. Queries `c360_scored_offers` via `load_gr_scored_offers(hid, balance)`. Auto Clip toggle at top.
 
 **Model toggle on My Offers:** `📋 Rule-Based` | `🤖 Propensity (XGBoost)` — filters `scored_df` by `model_type`.
 
-**Compare Models page:** Side-by-side ranking from both models for the same customer, with rank-change deltas (▲▼) and feature importance display.
+**Compare Models page:** Side-by-side ranking from rule-based and standard propensity models for the same customer, with rank-change deltas (▲▼) and feature importance display.
+
+**Feature Weight Studio:** Business user page for exploring how feature importance affects rankings. Two tabs:
+- `📋 Rule-Based` — 5 sliders (0–200% of default weight) mapped to the 5 scoring components stored in `c360_scored_offers`. Custom score = weighted sum of components + recency/tier boosts. `_STUDIO_FEATURES` in `app.py`.
+- `🤖 Propensity` — 16 sliders grouped by category (Personalisation, Offer Quality, Loyalty, Engagement, Channels, Demographics, Offer Fit). Features normalised to [0,1] per customer's offer set; features marked `invert=True` (e.g. `days_since_last_txn`, `churn_risk`) are flipped. Custom score = weighted sum, rescaled 0–100. `_PROPENSITY_FEATURES` in `app.py`. Data loaded via `load_propensity_feature_matrix(hid)` (cached).
+- Both tabs share `_render_ranking_comparison(merged, orig_score_col, custom_score_col, orig_rank_col, custom_rank_col, orig_label, model_color)` — the side-by-side card renderer with ▲▼ deltas.
+- **Important:** `orig_rank` is re-numbered 1…N within the standard-only subset before comparison. The stored `rank` in `c360_scored_offers` is within each pool (standard or GR), so no re-numbering is actually needed post-fix — but the re-numbering is kept as a safeguard.
+- Session-only state — weights reset on logout/refresh, never written to DB.
 
 **Sidebar customer switcher:** Dropdown replaces static household ID — select any customer without signing out.
 

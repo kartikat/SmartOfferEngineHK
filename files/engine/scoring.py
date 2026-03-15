@@ -35,7 +35,8 @@ WEIGHTS = {
 
 RECENCY_BOOST   = 1.20   # ×1.2 if transacted within last 7 days
 TIER_MULTIPLIER = 1.50   # ×1.5 for 4U+ on exclusive offers
-TOP_N_OFFERS    = 15     # offers stored per household (GR and standard separated in UI)
+TOP_N_STANDARD  = 10     # standard (non-GR) offers stored per household
+TOP_N_GR        = 5      # Grocery Reward offers stored per household
 
 
 # ─── DATA LOADING ────────────────────────────────────────────────────────────
@@ -391,9 +392,16 @@ def run_batch_scoring(customers, offers, affinity, gr_history, freshpass_hhs):
                 **result,
             })
 
-        # Rank and keep top N
-        scored_offers.sort(key=lambda x: x["score"], reverse=True)
-        for rank, rec in enumerate(scored_offers[:TOP_N_OFFERS], start=1):
+        # Rank standard and GR offers separately into their own pools
+        standard_offers = [o for o in scored_offers if (o.get("discount_type_cd") or "") not in ("GROCERY_REWARD", "DEPT_REWARD", "FREE_ITEM")]
+        gr_offers        = [o for o in scored_offers if (o.get("discount_type_cd") or "") in ("GROCERY_REWARD", "DEPT_REWARD", "FREE_ITEM")]
+
+        standard_offers.sort(key=lambda x: x["score"], reverse=True)
+        gr_offers.sort(key=lambda x: x["score"], reverse=True)
+
+        for rank, rec in enumerate(standard_offers[:TOP_N_STANDARD], start=1):
+            results.append({**rec, "rank": rank})
+        for rank, rec in enumerate(gr_offers[:TOP_N_GR], start=1):
             results.append({**rec, "rank": rank})
 
     return pd.DataFrame(results)

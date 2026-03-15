@@ -18,7 +18,7 @@ flowchart TD
         CUST["Customer Tables\nc360_customer_profile (auto_clip_ind)\nc360_freshpass · c360_j4u_hh_attributes"]
         TXN["Transaction Tables\nc360_txn · c360_txn_upc\nc360_clips · c360_redemptions\nc360_rewards_redeemed"]
         AGG["Aggregate Tables\nc360_cat_affinity · c360_customer_ltv_txn_agg\nc360_hh_weekly_cat_txns\nc360_offer_summary · c360_deals_engagement_aggr"]
-        OUT["Output Table\nc360_scored_offers\n3,600 rows — 15/HH × 120 HHs × 2 models"]
+        OUT["Output Table\nc360_scored_offers\n3,597 rows — rule_based(1,797) + propensity(1,200) + propensity_gr(600)"]
     end
 
     subgraph ENGINE["Scoring Engines (batch)"]
@@ -305,56 +305,66 @@ erDiagram
 
 ```mermaid
 flowchart LR
-    subgraph INPUT["Training Data (PostgreSQL)"]
-        POS["Positive labels (label=1)\nclips WITH matching redemption\n418 examples"]
-        NEG["Negative labels (label=0)\nclips without redemption\n+ eligible pairs never clipped\n1,957 examples"]
+    subgraph INPUT_STD["Standard Training Data"]
+        POS_S["Positive labels (label=1)\n229 examples\nclips + redemptions (standard offers)"]
+        NEG_S["Negative labels (label=0)\n938 examples\nclips without redemption + implicit negatives"]
     end
 
-    subgraph L1["Layer 1 — Feature Engineering (19 features)"]
-        CUST_F["Customer Features (11)\npoints balance · expiring pts · tier\nchurn risk · recency · household size\nfuel / DoorDash / Instacart / Uber flags"]
-        OFFER_F["Offer Features (5)\ndiscount value · J4U exclusive\nFreshPass only · redemption rate\ndays until expiry"]
-        INT_F["Interaction Features (3)\nchannel_match · category_affinity\npoints_gap"]
+    subgraph INPUT_GR["GR Training Data"]
+        POS_G["Positive labels (label=1)\n189 examples\nclips + redemptions (GR offers)"]
+        NEG_G["Negative labels (label=0)\n1,019 examples\nclips without redemption + implicit negatives"]
     end
 
-    subgraph L2["Layer 2 — XGBoost Propensity ✅ LIVE"]
-        XGB["XGBClassifier\n2,375 training examples\nscale_pos_weight=4.682\nCV AUC: 0.522\nTop signal: channel_match (0.123)\nSaved to model.pkl (joblib)"]
+    subgraph L1S["Standard Feature Engineering (16 features)"]
+        CUST_S["Customer (9)\ntier · churn risk · recency · household size\ngas / DoorDash / Instacart / Uber flags"]
+        OFFER_S["Offer (5)\ndiscount value · J4U exclusive\nFreshPass only · redemption rate · days until expiry"]
+        INT_S["Interaction (2)\nchannel_match · category_affinity"]
     end
 
-    subgraph L3["Layer 3 — Planned: Split Models"]
-        STD["propensity_standard\nStandard offer clips only\nWeights: channel_match, category_affinity"]
-        GRM["propensity_gr\nGR clips only\nWeights: points_gap, balance, expiry"]
+    subgraph L1G["GR Feature Engineering (12 features)"]
+        CUST_G["Customer — points-focused (7)\npoints balance · expiring pts · tier\nchurn risk · recency · household size · children"]
+        OFFER_G["Offer (3)\ndiscount value · redemption rate · days until expiry"]
+        INT_G["Interaction (2)\ncategory_affinity · points_gap"]
     end
 
-    subgraph L4["Layer 4 — Planned: Blended Ranking"]
+    subgraph L2["Layer 2 — XGBoost Models ✅ LIVE"]
+        STD["propensity (Standard)\n1,167 training examples\nscale_pos_weight=4.10\nCV AUC: 0.626\nTop: channel_match, instacart, redemption_rate\nmodel_standard.pkl"]
+        GRM["propensity_gr (GR)\n1,208 training examples\nscale_pos_weight=5.39\nCV AUC: 0.572\nTop: discount_value, points_gap, points_expiring\nmodel_gr.pkl"]
+    end
+
+    subgraph L3["Layer 3 — Planned: Blended Ranking"]
         BLEND["final_score = α × P(redemption)\n+ (1-α) × embedding_sim\nα tuned per segment"]
         RULES["Hard Business Rules\n× 1.5 Tier Multiplier\n× 1.2 Recency Boost\nFreshPass / 4U+ / Auto Clip filters"]
     end
 
-    OUT2["c360_scored_offers\nmodel_type = 'propensity'"]
+    OUT_S["c360_scored_offers\nmodel_type='propensity'\n1,200 rows (120 HH × 10)"]
+    OUT_G["c360_scored_offers\nmodel_type='propensity_gr'\n600 rows (120 HH × 5)"]
 
-    POS & NEG --> L1
-    CUST_F & OFFER_F & INT_F --> L2
-    L2 -->|"next"| L3
-    L3 -->|"future"| L4
-    L2 --> RULES
-    RULES --> OUT2
+    POS_S & NEG_S --> L1S
+    POS_G & NEG_G --> L1G
+    CUST_S & OFFER_S & INT_S --> STD
+    CUST_G & OFFER_G & INT_G --> GRM
+    STD --> RULES --> OUT_S
+    GRM --> OUT_G
+    L2 -->|"future"| L3
 
-    style INPUT fill:#f0f4ff,stroke:#4a90d9
-    style L1 fill:#fff8e1,stroke:#f9a825
+    style INPUT_STD fill:#f0f4ff,stroke:#4a90d9
+    style INPUT_GR fill:#e8f5e9,stroke:#2e7d32
+    style L1S fill:#fff8e1,stroke:#f9a825
+    style L1G fill:#fff8e1,stroke:#f9a825
     style L2 fill:#fce4ec,stroke:#c62828
-    style L3 fill:#e8f5e9,stroke:#388e3c
-    style L4 fill:#f3e5f5,stroke:#6a1b9a
+    style L3 fill:#f3e5f5,stroke:#6a1b9a
 ```
 
 **Milestones:**
 
 | # | Deliverable | Status |
 |---|---|---|
-| 4a | Feature engineering pipeline | ✅ Done — 19 features across 3 groups |
-| 4b | XGBoost model + scoring | ✅ Done — AUC 0.522, model.pkl persisted |
+| 4a | Feature engineering pipeline | ✅ Done — 16 features (standard) + 12 features (GR) |
+| 4b | XGBoost models + scoring | ✅ Done — standard AUC 0.626, GR AUC 0.572; separate pools |
 | 4c | SHAP values in UI | 🔵 Next — per-prediction feature contributions |
-| 4d | Split Standard / GR models | 🔵 Backlog |
-| 4e | Score-based GR UI ranking | 🔵 Backlog (depends on 4d) |
+| 4d | Split Standard / GR models | ✅ Done — propensity + propensity_gr |
+| 4e | Score-based GR UI ranking | ✅ Done — My Rewards uses propensity_gr scores |
 | 4f | Embedding model | 🔵 Future — needs >10k redemption events |
 
 ---
