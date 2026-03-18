@@ -4,6 +4,17 @@ All bugs identified and fixed across sessions. Ordered by session, then severity
 
 ---
 
+## Session 11 — 2026-03-18
+
+### DEF-015 · Compare Models — Propensity (Standard) column empty
+- **Severity:** High (silent — no error, just empty column)
+- **Symptom:** Compare Models page showed no offers in the Propensity (Standard) column.
+- **Root cause:** `render_model_comparison()` filtered `model_type == "propensity_standard"`, but DB stores `model_type = 'propensity'`. DEF-011 fixed the same bug on My Offers but missed this second occurrence.
+- **Fix:** Changed filter to `model_type == "propensity"`.
+- **File:** `files/app.py`
+
+---
+
 ## Session 10 — 2026-03-18
 
 ### DEF-010 · Propensity (GR) model toggle misplaced on My Offers page
@@ -144,3 +155,4 @@ All bugs identified and fixed across sessions. Ordered by session, then severity
 | DEF-012 | 10 | High | UI | Sidebar buttons invisible (CSS wildcard) |
 | DEF-013 | 10 | Low | UI | "None" category on My Rewards cards |
 | DEF-014 | 10 | High | UI | `expander(open=)` crash on Streamlit 1.55.0 |
+| DEF-015 | 11 | High | UI | Compare Models Propensity (Standard) column empty — `propensity_standard` model_type mismatch |

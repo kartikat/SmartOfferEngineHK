@@ -11,6 +11,28 @@
 
 ---
 
+## Session 11 — 2026-03-18
+
+### What was done
+
+#### 1. Login dropdown — real customer names
+
+- **Login page**: dropdown now shows `"Full Name (HH00001) | tier | pts"` format; `household_id` extracted from the `(...)` portion via `choice.split("(")[1].split(")")[0]`
+- **Sidebar customer switcher**: updated from `"HH00001 | tier | Full Name"` to `"Full Name (HH00001) | tier | pts"` — consistent with login
+- **Compare Customers dropdowns**: replaced raw `household_id` list with `"Full Name (HH00001)"` labels; `hid` resolved from label via `cmp_hid_map`
+- **Compare Customers column headers**: `st.html('<div class="compare-header">...')` now shows name label instead of raw `hid_a`/`hid_b`
+- **Segment Explorer "Sign in as"**: picker now shows `"Full Name (HH00001)"` labels; `full_name` also added as `Name` column in segment table display
+- No DB changes needed — `full_name` (`first_nm || ' ' || last_nm`) was already in `load_customers()` query
+
+#### 2. Fixed Compare Models — Propensity (Standard) column empty (DEF-015)
+
+- `render_model_comparison()` was filtering `model_type == "propensity_standard"` — DB stores `model_type = 'propensity'`
+- Same root cause as DEF-011 (fixed on My Offers in Session 10) but missed in the Compare Models function
+- **Fix:** Changed filter to `model_type == "propensity"`
+- **File:** `files/app.py`
+
+---
+
 ## Session 10 — 2026-03-18
 
 ### What was done
@@ -191,8 +213,8 @@ HackathonProject/
   - **Dynamic Trigger Engine**: Auto-generate personalised offers based on DB signals (win-back, churn prevention, lapsed category, points expiry, FreshPass upsell)
   - **Offer Performance Dashboard**: clip rate, redemption rate, revenue impact per offer
 
-- [ ] **Login Dropdown — Real Customer Names**
-  - Replace `household_id` prefix with `full_name` in login page and sidebar switcher
+- [x] **Login Dropdown — Real Customer Names**
+  - Login, sidebar, Compare Customers, Segment Explorer all show `"Full Name (HH00001)"` format
 
 - [ ] **LTV Aggregate Refresh Job**
   - `c360_customer_ltv_txn_agg` is computed once at seed time; needs a refresh job once real transaction flow exists
@@ -210,6 +232,10 @@ HackathonProject/
 ---
 
 ## Previous Sessions
+
+### Session 11 — 2026-03-18
+- Login dropdown, sidebar switcher, Compare Customers dropdowns/headers, Segment Explorer picker — all now show real customer names in `"Full Name (HH00001)"` format
+- Fixed Compare Models Propensity (Standard) column empty — `propensity_standard` model_type mismatch (DEF-015)
 
 ### Session 10 — 2026-03-18
 - Moved Propensity (GR) toggle from My Offers to My Rewards; fixed `propensity_standard` → `propensity` model_type bug

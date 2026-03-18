@@ -658,8 +658,8 @@ def page_login():
 
         display = customers_df.apply(
             lambda r: (
-                f"{r['household_id']}  |  {r['clv_tier_level_id']}  |  "
-                f"{r['fav_channel']}  |  {r['current_point_balance']:,} pts"
+                f"{r['full_name']}  ({r['household_id']})  |  "
+                f"{r['clv_tier_level_id']}  |  {r['current_point_balance']:,} pts"
             ),
             axis=1
         )
@@ -676,7 +676,8 @@ def page_login():
             if choice == "— Select a customer —":
                 st.warning("Please select a customer to continue.")
             else:
-                hid = choice.split("|")[0].strip()
+                # Extract household_id from "(HH00001)" portion
+                hid = choice.split("(")[1].split(")")[0].strip()
                 st.session_state.household_id = hid
                 st.session_state.page = "dashboard"
                 st.rerun()
@@ -705,7 +706,7 @@ def page_dashboard():
         all_options = customers_df.apply(
             lambda r: (
                 r["household_id"],
-                f"{r['household_id']}  |  {r['clv_tier_level_id']}  |  {r['full_name']}"
+                f"{r['full_name']}  ({r['household_id']})  |  {r['clv_tier_level_id']}  |  {r['current_point_balance']:,} pts"
             ), axis=1
         ).tolist()
         hid_to_label = {h: l for h, l in all_options}
@@ -1385,7 +1386,7 @@ def render_model_comparison(hid: str):
 
         std_offers = scored_df[
             (scored_df["household_id"] == hid) &
-            (scored_df["model_type"] == "propensity_standard")
+            (scored_df["model_type"] == "propensity")
         ].sort_values("rank")
 
         std_rank = {row["client_offer_id"]: int(row["rank"])
@@ -1499,24 +1500,34 @@ def render_comparison(current_hid: str):
     st.subheader("Compare Customers")
     st.caption("Select two households to compare their profiles and personalised offers side by side.")
 
-    all_hids = customers_df["household_id"].tolist()
+    cmp_options = customers_df.apply(
+        lambda r: (r["household_id"], f"{r['full_name']}  ({r['household_id']})"), axis=1
+    ).tolist()
+    cmp_labels  = [l for _, l in cmp_options]
+    cmp_hid_map = {l: h for h, l in cmp_options}
+    cmp_label_map = {h: l for h, l in cmp_options}
+    current_label = cmp_label_map.get(current_hid, cmp_labels[0])
+
     col1, col2 = st.columns(2)
     with col1:
-        hid_a = st.selectbox("Customer A", all_hids,
-                             index=all_hids.index(current_hid), key="compare_a")
+        label_a = st.selectbox("Customer A", cmp_labels,
+                               index=cmp_labels.index(current_label), key="compare_a")
     with col2:
-        default_b = all_hids[1] if all_hids[0] == hid_a else all_hids[0]
-        hid_b = st.selectbox("Customer B", all_hids,
-                             index=all_hids.index(default_b), key="compare_b")
+        default_label_b = cmp_labels[1] if cmp_labels[0] == label_a else cmp_labels[0]
+        label_b = st.selectbox("Customer B", cmp_labels,
+                               index=cmp_labels.index(default_label_b), key="compare_b")
+
+    hid_a = cmp_hid_map[label_a]
+    hid_b = cmp_hid_map[label_b]
 
     st.markdown("---")
 
     col_a, col_b = st.columns(2)
     with col_a:
-        st.html(f'<div class="compare-header">{hid_a}</div>')
+        st.html(f'<div class="compare-header">{label_a}</div>')
         st.html(_customer_summary_html(hid_a))
     with col_b:
-        st.html(f'<div class="compare-header">{hid_b}</div>')
+        st.html(f'<div class="compare-header">{label_b}</div>')
         st.html(_customer_summary_html(hid_b))
 
     st.markdown("#### Top 3 Personalised Offers")
@@ -2325,10 +2336,11 @@ def render_segments():
         "High Churn Risk":      high_churn,
     }
     seg_df = seg_map[segment_choice][[
-        "household_id", "clv_tier_level_id", "current_point_balance",
+        "household_id", "full_name", "clv_tier_level_id", "current_point_balance",
         "fav_channel", "days_since_last_txn", "customer_age", "churn_segment_cd"
     ]].rename(columns={
         "household_id":          "Household ID",
+        "full_name":             "Name",
         "clv_tier_level_id":     "Tier",
         "current_point_balance": "Points",
         "fav_channel":           "Channel",
@@ -2348,7 +2360,10 @@ def render_segments():
 
     st.markdown("---")
     st.markdown("#### Sign in as a customer from this segment")
-    pick = st.selectbox("Select household", seg_df["Household ID"].tolist())
+    seg_labels  = (seg_df["Name"] + "  (" + seg_df["Household ID"] + ")").tolist()
+    seg_hid_map = dict(zip(seg_labels, seg_df["Household ID"].tolist()))
+    pick_label  = st.selectbox("Select customer", seg_labels)
+    pick        = seg_hid_map[pick_label]
     if st.button("View their offers", type="primary"):
         st.session_state.household_id = pick
         st.session_state.page = "dashboard"
