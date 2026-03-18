@@ -133,7 +133,10 @@ st.markdown(f"""
 
     /* Sidebar */
     section[data-testid="stSidebar"] {{ background: {BLUE}; }}
-    section[data-testid="stSidebar"] * {{ color: white !important; }}
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] span,
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] div[data-testid="stMarkdownContainer"],
     section[data-testid="stSidebar"] .stRadio label {{ color: white !important; }}
 
     /* Comparison view */
@@ -523,10 +526,11 @@ def load_gr_scored_offers(hid: str, balance: int, model_type: str = "propensity_
                 o.discount_type_cd, o.discount_value,
                 o.tier_1_points_threshold AS pts_threshold,
                 o.program_subtype,
-                o.categories_txt AS category,
+                COALESCE(os.rep_category_nm, '') AS category,
                 (o.end_dt - CURRENT_DATE)::int AS days_left
             FROM c360_scored_offers so
             JOIN c360_offer o ON o.client_offer_id = so.client_offer_id
+            LEFT JOIN c360_offer_summary os ON so.client_offer_id = os.client_offer_id
             WHERE so.model_type = :model_type
               AND so.household_id = :hid
               AND o.tier_1_points_threshold <= :balance
