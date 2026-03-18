@@ -981,7 +981,7 @@ def render_offers(customer: dict, hid: str):
                     st.rerun()
 
         if show_scores:
-            with st.expander(f"📊 Score breakdown for this offer", open=False):
+            with st.expander(f"📊 Score breakdown for this offer", expanded=False):
                 st.markdown("**How the rule-based engine scored this offer:**")
                 labels = {
                     "transaction_affinity": ("Transaction Affinity", "30%", "Historical spend in this category"),
