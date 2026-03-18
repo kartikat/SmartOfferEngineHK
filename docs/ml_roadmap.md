@@ -131,10 +131,12 @@ Where α is tuned per customer segment (e.g. high for active customers, lower fo
 
 ## Phased Delivery
 
-| Phase | Deliverable | Dependency |
-|---|---|---|
-| 4a | Feature engineering pipeline | PostgreSQL seeded with real data |
-| 4b | XGBoost model (Layer 2) | `c360_redemptions` + `c360_clips` data |
-| 4c | SHAP values in UI | Layer 2 complete |
-| 4d | Embedding model (Layer 3) | Sufficient redemption history (>10k events) |
-| 4e | Blended ranking (Layer 4) | Layers 2 + 3 complete |
+| Phase | Deliverable | Status | Dependency |
+|---|---|---|---|
+| 4a | Feature engineering pipeline | ✅ Done | PostgreSQL seeded with real data |
+| 4b | XGBoost model — Standard + GR split | ✅ Done | `c360_redemptions` + `c360_clips` data |
+| 4c | Embedding model (Layer 3) | 🔵 Next | Sufficient redemption history (>10k events) |
+| 4d | Blended ranking (Layer 4) | 🔵 Backlog | Layers 2 + 3 complete |
+| 4e | SHAP values in UI | 🔵 Backlog | Layer 2 complete + team familiar with SHAP theory |
+
+> **Note on 4e:** SHAP values are deprioritised until the team has reviewed the theory. SHAP (SHapley Additive exPlanations) attributes each feature's contribution to an individual prediction — requires understanding of cooperative game theory concepts before building the UI. Revisit after 4c/4d.

@@ -175,8 +175,9 @@ HackathonProject/
 
 ## Next Steps
 
-- [ ] **SHAP values** — per-prediction feature contribution on Compare Models page (Phase 4c)
+- [ ] **Embedding model (Phase 4c)** — two-tower / matrix factorisation on `c360_redemptions`; blocked on >10k real redemption events (teammate transaction flow build)
 - [ ] **Transfer to office laptop** — `smartrewards_dump.sql` exists at project root
+- [ ] **SHAP values (Phase 4e)** — deprioritised; revisit after team reviews SHAP theory (SHapley Additive exPlanations)
 
 ### Backlog (time permitting)
 
