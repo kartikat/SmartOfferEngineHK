@@ -514,8 +514,8 @@ def load_gr_offers(balance: int) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=300)
-def load_gr_scored_offers(hid: str, balance: int) -> pd.DataFrame:
-    """Load GR offers for a household ranked by propensity_gr score, filtered to eligible tiers."""
+def load_gr_scored_offers(hid: str, balance: int, model_type: str = "propensity_gr") -> pd.DataFrame:
+    """Load GR offers for a household filtered to eligible tiers, ordered by score."""
     with _engine.connect() as conn:
         return pd.read_sql(text("""
             SELECT
@@ -527,11 +527,11 @@ def load_gr_scored_offers(hid: str, balance: int) -> pd.DataFrame:
                 (o.end_dt - CURRENT_DATE)::int AS days_left
             FROM c360_scored_offers so
             JOIN c360_offer o ON o.client_offer_id = so.client_offer_id
-            WHERE so.model_type = 'propensity_gr'
+            WHERE so.model_type = :model_type
               AND so.household_id = :hid
               AND o.tier_1_points_threshold <= :balance
             ORDER BY so.score DESC
-        """), conn, params={"hid": hid, "balance": int(balance)})
+        """), conn, params={"hid": hid, "balance": int(balance), "model_type": model_type})
 
 
 def logout():
@@ -810,42 +810,24 @@ def render_profile(customer: dict):
 def render_offers(customer: dict, hid: str):
     st.subheader("My Personalised Offers")
 
-    # Model toggle
+    # Model toggle — standard offers only; GR model lives on My Rewards
     model_choice = st.radio(
         "Scoring model",
-        ["📋 Rule-Based", "🤖 Propensity (Standard)", "🎯 Propensity (GR)"],
+        ["📋 Rule-Based", "🤖 Propensity (XGBoost)"],
         horizontal=True,
         label_visibility="collapsed",
     )
-    
-    if "Rule-Based" in model_choice:
-        selected_model = "rule_based"
-    elif "(Standard)" in model_choice:
-        selected_model = "propensity_standard"
-    else:
-        selected_model = "propensity_gr"
+
+    selected_model = "rule_based" if "Rule-Based" in model_choice else "propensity"
 
     meta = load_model_metadata()
 
-    if selected_model == "propensity_standard" and "propensity_standard" in meta:
+    if selected_model == "propensity" and "propensity_standard" in meta:
         meta_data = meta["propensity_standard"]
         st.html(f"""
         <div style="background:#EEF2FF; border:1px solid #C7D2FE; border-radius:8px;
                     padding:10px 16px; margin-bottom:12px; font-size:0.85rem;">
             🤖 <b>XGBoost Propensity (Standard Offers)</b> &nbsp;|&nbsp;
-            Trained on <b>{meta_data.get('n_train', '—')}</b> offer pairs
-            ({meta_data.get('n_pos', '—')} redeemed / {meta_data.get('n_neg', '—')} not redeemed)
-            &nbsp;|&nbsp; CV AUC: <b>{meta_data.get('auc_cv', '—')}</b>
-            &nbsp;|&nbsp; Top signals:
-            <b>{', '.join(f[0].replace('_', ' ') for f in meta_data.get('top_features', [])[:3])}</b>
-        </div>
-        """)
-    elif selected_model == "propensity_gr" and "propensity_gr" in meta:
-        meta_data = meta["propensity_gr"]
-        st.html(f"""
-        <div style="background:#F0FDF4; border:1px solid #BBDBB5; border-radius:8px;
-                    padding:10px 16px; margin-bottom:12px; font-size:0.85rem;">
-            🎯 <b>XGBoost Propensity (Grocery Reward)</b> &nbsp;|&nbsp;
             Trained on <b>{meta_data.get('n_train', '—')}</b> offer pairs
             ({meta_data.get('n_pos', '—')} redeemed / {meta_data.get('n_neg', '—')} not redeemed)
             &nbsp;|&nbsp; CV AUC: <b>{meta_data.get('auc_cv', '—')}</b>
@@ -885,9 +867,8 @@ def render_offers(customer: dict, hid: str):
         (scored_df["model_type"] == selected_model)
     ].copy()
     
-    # Exclude GR offers only for standard and rule-based models, not for the GR model itself
-    if selected_model != "propensity_gr":
-        cust_offers = cust_offers[cust_offers["program_type"] != "Grocery Reward"].copy()
+    # GR offers are always excluded from My Offers — they belong on My Rewards
+    cust_offers = cust_offers[cust_offers["program_type"] != "Grocery Reward"].copy()
     if channel_filter != "All Channels":
         cust_offers = cust_offers[cust_offers["delivery_channel_cd"] == channel_filter]
     cust_offers = cust_offers.sort_values("score", ascending=False).head(top_n)
@@ -1148,12 +1129,46 @@ def render_rewards(customer: dict, hid: str):
     </div>
     """)
 
-    gr_df = load_gr_scored_offers(hid, balance)
+    # Model toggle
+    gr_model_choice = st.radio(
+        "GR scoring model",
+        ["🎯 Propensity (XGBoost)", "📋 Rule-Based"],
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+    gr_model = "propensity_gr" if "Propensity" in gr_model_choice else "rule_based"
+
+    meta = load_model_metadata()
+    if gr_model == "propensity_gr" and "propensity_gr" in meta:
+        meta_data = meta["propensity_gr"]
+        st.html(f"""
+        <div style="background:#F0FDF4; border:1px solid #BBDBB5; border-radius:8px;
+                    padding:10px 16px; margin-bottom:12px; font-size:0.85rem;">
+            🎯 <b>XGBoost Propensity (Grocery Reward)</b> &nbsp;|&nbsp;
+            Trained on <b>{meta_data.get('n_train', '—')}</b> GR offer pairs
+            ({meta_data.get('n_pos', '—')} redeemed / {meta_data.get('n_neg', '—')} not redeemed)
+            &nbsp;|&nbsp; CV AUC: <b>{meta_data.get('auc_cv', '—')}</b>
+            &nbsp;|&nbsp; Top signals:
+            <b>{', '.join(f[0].replace('_', ' ') for f in meta_data.get('top_features', [])[:3])}</b>
+        </div>
+        """)
+    else:
+        st.html("""
+        <div style="background:#F0F9FF; border:1px solid #BAE6FD; border-radius:8px;
+                    padding:10px 16px; margin-bottom:12px; font-size:0.85rem;">
+            📋 <b>Rule-Based Engine (GR Path)</b> &nbsp;|&nbsp;
+            Points eligibility 40% · category affinity 25% · value/pt 15% · GR history 15% · recency 5%.
+            ×1.3 expiry boost when points expire next month.
+        </div>
+        """)
+
+    gr_df = load_gr_scored_offers(hid, balance, model_type=gr_model)
     if gr_df.empty:
         st.info("You don't have enough points for any Grocery Rewards yet. Keep shopping to earn points!")
         return
 
-    st.caption(f"**{len(gr_df)} rewards available** — ranked by your personalised score. Highest value for you shown first.")
+    model_label = "personalised score" if gr_model == "propensity_gr" else "rule-based score"
+    st.caption(f"**{len(gr_df)} rewards available** — ranked by your {model_label}. Highest value for you shown first.")
     st.markdown("")
 
     for idx, (_, row) in enumerate(gr_df.iterrows(), start=1):
