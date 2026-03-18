@@ -133,11 +133,22 @@ st.markdown(f"""
 
     /* Sidebar */
     section[data-testid="stSidebar"] {{ background: {BLUE}; }}
-    section[data-testid="stSidebar"] p,
-    section[data-testid="stSidebar"] span,
+    section[data-testid="stSidebar"] p:not(button p),
+    section[data-testid="stSidebar"] span:not(button span),
     section[data-testid="stSidebar"] label,
     section[data-testid="stSidebar"] div[data-testid="stMarkdownContainer"],
     section[data-testid="stSidebar"] .stRadio label {{ color: white !important; }}
+    section[data-testid="stSidebar"] button {{
+        background: rgba(255,255,255,0.15) !important;
+        border: 1px solid rgba(255,255,255,0.5) !important;
+        color: white !important;
+    }}
+    section[data-testid="stSidebar"] button p,
+    section[data-testid="stSidebar"] button span {{ color: white !important; }}
+    section[data-testid="stSidebar"] button:hover {{
+        background: rgba(255,255,255,0.25) !important;
+        border-color: white !important;
+    }}
 
     /* Comparison view */
     .compare-header {{
