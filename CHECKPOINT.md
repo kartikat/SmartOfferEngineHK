@@ -11,6 +11,37 @@
 
 ---
 
+## Session 10 — 2026-03-18
+
+### What was done
+
+#### 1. Moved Propensity (GR) model toggle to My Rewards
+
+- `"🎯 Propensity (GR)"` option removed from My Offers radio — GR offers don't belong on the standard offers page
+- My Offers radio is now just `📋 Rule-Based` | `🤖 Propensity (XGBoost)` (standard offers only)
+- Fixed latent bug: radio was mapping `"(Standard)"` → `"propensity_standard"` but DB stores `model_type='propensity'` — nothing would have shown
+- GR filter on My Offers is now unconditional (was previously guarded by `selected_model != "propensity_gr"`)
+- **My Rewards** gains its own model toggle: `🎯 Propensity (XGBoost)` (default) | `📋 Rule-Based`, with model info banner
+- `load_gr_scored_offers(hid, balance, model_type="propensity_gr")` — added `model_type` param so My Rewards can switch between `propensity_gr` and `rule_based`
+- Caption on My Rewards updates to reflect active model ("personalised score" vs "rule-based score")
+
+#### 2. Fixed white/invisible sidebar buttons
+
+- **Root cause:** `section[data-testid="stSidebar"] * { color: white !important }` wildcard was overriding button text to white — white text on white button background = invisible
+- Previous partial fix still caught `p` inside button elements
+- **Fix:** added `:not(button p)` / `:not(button span)` to exclude button children from white text rule; explicitly styled sidebar buttons as ghost buttons: `rgba(255,255,255,0.15)` background, white border, white text, brightens on hover
+
+#### 3. Fixed "None" category on My Rewards cards
+
+- `load_gr_scored_offers` was using `o.categories_txt AS category` — NULL for all offers
+- Fixed with `LEFT JOIN c360_offer_summary` + `COALESCE(os.rep_category_nm, '')` — same fix already in `load_scored()` for My Offers
+
+#### 4. Fixed score breakdown expander crash
+
+- `st.expander(open=False)` → `st.expander(expanded=False)` — `open=` not available in Streamlit 1.55.0
+
+---
+
 ## Session 9 — 2026-03-15
 
 ### What was done
@@ -178,6 +209,10 @@ HackathonProject/
 ---
 
 ## Previous Sessions
+
+### Session 10 — 2026-03-18
+- Moved Propensity (GR) toggle from My Offers to My Rewards; fixed `propensity_standard` → `propensity` model_type bug
+- Fixed invisible sidebar buttons (CSS wildcard override); fixed "None" category on My Rewards cards; fixed `expander(open=)` crash
 
 ### Session 9 — 2026-03-15
 - Fixed DB_URL `postgres` role error (teammate's commit broke macOS)
