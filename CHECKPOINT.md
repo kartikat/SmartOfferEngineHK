@@ -31,6 +31,17 @@
 - **Fix:** Changed filter to `model_type == "propensity"`
 - **File:** `files/app.py`
 
+#### 3. Unit tests — rule-based scoring engine
+
+- Created `tests/test_scoring.py` — 59 tests, no DB required
+- Covers all pure scoring functions: `score_transaction_affinity`, `score_redemption_match`, `score_points_eligibility`, `score_cart_affinity`, `score_demographic_match`, `score_standard_offer`, `score_grocery_reward`, `passes_business_rules`, `run_batch_scoring`
+- All 59 passing (`python3 -m pytest tests/test_scoring.py -v`)
+
+- `render_model_comparison()` was filtering `model_type == "propensity_standard"` — DB stores `model_type = 'propensity'`
+- Same root cause as DEF-011 (fixed on My Offers in Session 10) but missed in the Compare Models function
+- **Fix:** Changed filter to `model_type == "propensity"`
+- **File:** `files/app.py`
+
 ---
 
 ## Session 10 — 2026-03-18
@@ -178,6 +189,8 @@ HackathonProject/
 │   ├── data_model.md                # 18-table schema reference
 │   ├── ml_roadmap.md                # Phase 4 ML upgrade plan
 │   └── images/                      # Rendered PNG diagrams
+├── tests/
+│   └── test_scoring.py              # 59 unit tests for rule-based scoring (no DB)
 └── files/
     ├── app.py                       # Streamlit UI — port 8501
     ├── db/schema.sql                # All 18 table definitions
@@ -236,6 +249,7 @@ HackathonProject/
 ### Session 11 — 2026-03-18
 - Login dropdown, sidebar switcher, Compare Customers dropdowns/headers, Segment Explorer picker — all now show real customer names in `"Full Name (HH00001)"` format
 - Fixed Compare Models Propensity (Standard) column empty — `propensity_standard` model_type mismatch (DEF-015)
+- Added 59 unit tests for rule-based scoring engine (`tests/test_scoring.py`) — no DB required, all passing
 
 ### Session 10 — 2026-03-18
 - Moved Propensity (GR) toggle from My Offers to My Rewards; fixed `propensity_standard` → `propensity` model_type bug
