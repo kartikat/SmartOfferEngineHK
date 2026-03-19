@@ -37,7 +37,20 @@
 - Covers all pure scoring functions: `score_transaction_affinity`, `score_redemption_match`, `score_points_eligibility`, `score_cart_affinity`, `score_demographic_match`, `score_standard_offer`, `score_grocery_reward`, `passes_business_rules`, `run_batch_scoring`
 - All 59 passing (`python3 -m pytest tests/test_scoring.py -v`)
 
-#### 4. Customer / Analyst persona toggle
+#### 4. Demo Script — rebuilt for 3-minute presentation
+
+- Redesigned from 12 steps → 5 tight steps, ~45s each
+- **Key message woven throughout:** "Your C360 data already has everything this needs"
+- **Step 1:** Real Albertsons for U production screenshot (527 clipped offers) — "manually ranked, not personalised"
+- **Step 2:** Problem framing with C360 stats (households, offers, scored pairs, models)
+- **Step 3:** Same catalog, different rankings — Fuel vs for U+ live side-by-side Compare page
+- **Step 4:** AI vs rule-based — Compare Models live with rank-change deltas
+- **Step 5:** Business impact cards (redemption lift, breakage, one C360 table)
+- Each step has tight narration + 3 presenter talking points
+- Navigation: progress bar + step picker dropdown (jump to any step)
+- Production screenshot saved to `files/assets/prod_screenshot.png`
+
+#### 5. Customer / Analyst persona toggle
 
 - Sidebar gains two buttons: `🛒 Customer` and `📊 Analyst` — active persona shown as filled (primary), inactive as ghost
 - **Customer View nav:** My Offers · My Rewards · My Clipped Offers · My Profile
@@ -206,6 +219,8 @@ HackathonProject/
 │   ├── ml_roadmap.md                # Phase 4 ML upgrade plan
 │   ├── productionalization.md       # What needs to change for production at scale
 │   └── images/                      # Rendered PNG diagrams
+├── files/assets/
+│   └── prod_screenshot.png          # Real Albertsons for U app screenshot (Step 1 of demo)
 ├── tests/
 │   └── test_scoring.py              # 59 unit tests for rule-based scoring (no DB)
 └── files/
@@ -267,6 +282,7 @@ HackathonProject/
 - Login dropdown, sidebar switcher, Compare Customers dropdowns/headers, Segment Explorer picker — all now show real customer names in `"Full Name (HH00001)"` format
 - Fixed Compare Models Propensity (Standard) column empty — `propensity_standard` model_type mismatch (DEF-015)
 - Added 59 unit tests for rule-based scoring engine (`tests/test_scoring.py`) — no DB required, all passing
+- Demo script rebuilt for 3-min pitch: 5 steps, real prod screenshot, talking points, progress bar, step picker
 - Customer / Analyst persona toggle in sidebar with coloured header pill
 - Created `docs/productionalization.md` — full production roadmap (infra, ML, API, frontend, monitoring, compliance)
 
