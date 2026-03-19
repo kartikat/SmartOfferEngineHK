@@ -2123,88 +2123,94 @@ def render_allocation_criteria():
 
 DEMO_STEPS = [
     {
-        "tag": "Overview",
-        "title": "SmartRewards — What It Does",
+        "tag": "Step 1 of 5",
+        "title": "Today — 500+ Offers, No Personalisation",
         "narration": (
-            "SmartRewards is an AI-powered personalised offer engine built on top of Albertsons' "
-            "for U loyalty program. It scores every customer-offer pair using 5 weighted rules — "
-            "transaction history, channel alignment, points eligibility, browsing behaviour, and "
-            "demographic fit — and returns a ranked list of the most relevant offers per household."
+            "This is what every Albertsons customer sees today. "
+            "The same catalog — with a ranking the business curates manually. "
+            "A Produce loyalist and a Meat shopper see the same offers in the same order. "
+            "The data to personalise this already exists in C360. It's just not being used yet."
         ),
+        "talking_points": [
+            "527 offers clipped — customers are overwhelmed, not guided",
+            "Ranking today is manually curated by the business — same order for every household",
+            "C360 already has transaction history, category affinity, points balance — unused for ranking",
+        ],
+        "customer": None,
+        "highlight": "before",
+    },
+    {
+        "tag": "Step 2 of 5",
+        "title": "The Problem — And Why C360 Already Has the Answer",
+        "narration": (
+            "Today, every Albertsons customer gets the same weekly offer email — "
+            "a Fuel loyalist gets the same Bakery coupon as a Produce shopper. "
+            "The data to do better already exists: Albertsons C360 has transaction history, "
+            "channel preferences, points balances, churn scores, and redemption patterns "
+            "for every household. SmartRewards turns that data into personalised, ranked offers."
+        ),
+        "talking_points": [
+            "Built on 18 real Albertsons C360 tables — zero new data sources required",
+            "Scores every customer-offer pair individually, not at segment level",
+            "Adds one new asset to C360: c360_scored_offers — a ranked offer table per household",
+        ],
         "customer": None,
         "highlight": "stats",
     },
     {
-        "tag": "Scoring Engine",
-        "title": "How Offers Are Scored",
+        "tag": "Step 3 of 5",
+        "title": "Same Catalog. Completely Different Rankings.",
         "narration": (
-            "Before we look at individual customers, here's the engine underneath. "
-            "Every customer-offer pair is scored using 5 weighted rules — transaction history, "
-            "channel alignment, points eligibility, browsing behaviour, and demographic fit. "
-            "Multipliers then boost the score for recent shoppers and premium tier members. "
-            "Business rules apply on top to handle edge cases like the eCommerce nudge and FreshPass targeting."
+            "Here's personalisation in action. Two households, same 64-offer catalog — "
+            "completely different ranked results. "
+            "A Fuel redeemer sees digital offers nudged to the top to encourage eCommerce migration. "
+            "A for U+ subscriber sees exclusive offers boosted by a 1.5× tier multiplier. "
+            "The ranking comes entirely from C360 signals: channel preference, category affinity, "
+            "points balance, redemption history."
         ),
-        "customer": None,
-        "highlight": "criteria",
-    },
-    {
-        "tag": "Story 1 of 2",
-        "title": "Meet a Fuel Redeemer",
-        "narration": (
-            "This household primarily redeems at Fuel stations — a typical offline loyalist. "
-            "They have a solid points balance but have never shopped online. "
-            "SmartRewards' goal: nudge them toward eCommerce without abandoning their Fuel habit."
-        ),
-        "customer": "fuel",
-        "highlight": "profile",
-    },
-    {
-        "tag": "Story 1 of 2",
-        "title": "The eCommerce Nudge in Action",
-        "narration": (
-            "Notice that J4U digital offers appear in the top recommendations despite this being a Fuel customer. "
-            "That's intentional — the engine gives a partial score to digital offers for Fuel redeemers, "
-            "enough to surface them without completely overriding their natural preferences. "
-            "This is the migration strategy: show relevant online offers, let the customer discover them."
-        ),
-        "customer": "fuel",
-        "highlight": "offers",
-    },
-    {
-        "tag": "Story 2 of 2",
-        "title": "Meet a for U+ Subscriber",
-        "narration": (
-            "This is a premium for U+ member — Albertsons' highest loyalty tier. "
-            "They get access to exclusive offers unavailable to Standard members, "
-            "and a 1.5× tier multiplier that boosts their scores significantly. "
-            "These customers are the highest-value segment and the primary target for SmartRewards."
-        ),
-        "customer": "premium",
-        "highlight": "profile",
-    },
-    {
-        "tag": "Story 2 of 2",
-        "title": "The Tier Multiplier Effect",
-        "narration": (
-            "Watch how scores for exclusive offers jump significantly for for U+ members. "
-            "The 1.5× tier multiplier rewards loyalty and creates a clear incentive to upgrade. "
-            "Offers marked with ★ for U+ Boost are exclusive to this tier — "
-            "a tangible benefit that Standard members can see but not access."
-        ),
-        "customer": "premium",
-        "highlight": "offers",
-    },
-    {
-        "tag": "Head-to-Head",
-        "title": "Side-by-Side Comparison",
-        "narration": (
-            "Here's the clearest way to see SmartRewards at work: the same offer catalog, "
-            "two very different customers, two completely different ranked results. "
-            "The engine personalises at the household level — not the segment level. "
-            "Every household gets a unique ranked list based on their own behaviour."
-        ),
+        "talking_points": [
+            "C360 signals used: fav_channel, cat_affinity, current_point_balance, clv_tier_level_id",
+            "Fuel redeemers get a deliberate J4U nudge — migrate to digital without disrupting their habit",
+            "for U+ members see exclusive offers unavailable to Standard tier — visible reward for loyalty",
+        ],
         "customer": "both",
         "highlight": "compare",
+    },
+    {
+        "tag": "Step 4 of 5",
+        "title": "The AI Layer — What the Rules Miss",
+        "narration": (
+            "On top of the rule-based engine, we trained an XGBoost model on C360 redemption history. "
+            "It learns which signals actually predict whether a customer redeems — not just clips. "
+            "The rank-change deltas show where the AI and the rules disagree. "
+            "Those disagreements are where machine learning adds the most value: "
+            "signals the rules don't capture, interactions too complex to hand-tune."
+        ),
+        "talking_points": [
+            "Training data: c360_redemptions (positive) vs c360_clips without redemption (negative)",
+            "Top signal discovered by XGBoost: channel_match — validates the rule-based weight",
+            "CV AUC 0.626 on synthetic data — will improve significantly on real C360 redemption volume",
+        ],
+        "customer": "premium",
+        "highlight": "compare_models",
+    },
+    {
+        "tag": "Step 5 of 5",
+        "title": "What This Unlocks for Albertsons",
+        "narration": (
+            "SmartRewards adds one new table to C360 — c360_scored_offers. "
+            "That single table becomes a shared asset across the business: "
+            "the app reads it to surface personalised offers, analytics reads it to measure redemption lift, "
+            "marketing reads it to plan targeted campaigns, and ML reads it to monitor model drift. "
+            "No new data. No new infrastructure today. Just the C360 investment finally being fully used."
+        ),
+        "talking_points": [
+            "15–30% redemption lift from personalised vs generic offers (industry benchmark)",
+            "Points expiry surfacing reduces breakage liability and drives incremental basket visits",
+            "One pipeline. One new C360 table. Every team — app, analytics, marketing, ML — benefits",
+        ],
+        "customer": None,
+        "highlight": "so_what",
     },
 ]
 
@@ -2217,14 +2223,37 @@ def render_demo_script():
     step     = DEMO_STEPS[step_idx]
     total    = len(DEMO_STEPS)
 
+    # ── Progress bar ────────────────────────────────────────────────────────
+    st.progress((step_idx) / (total - 1) if total > 1 else 1.0)
+
+    # ── Step picker ─────────────────────────────────────────────────────────
+    step_labels = [f"{i+1}. {s['title']}" for i, s in enumerate(DEMO_STEPS)]
+    chosen = st.selectbox("Jump to step", step_labels, index=step_idx,
+                          label_visibility="collapsed")
+    chosen_idx = step_labels.index(chosen)
+    if chosen_idx != step_idx:
+        st.session_state.demo_step = chosen_idx
+        st.rerun()
+
+    st.markdown("")
+
+    # ── Narration + talking points ──────────────────────────────────────────
+    points_html = "".join(
+        f'<li style="margin-bottom:6px;">{p}</li>'
+        for p in step.get("talking_points", [])
+    )
     st.html(f"""
     <div class="demo-step">
         <div class="step-tag">Step {step_idx + 1} of {total} &nbsp;·&nbsp; {step['tag']}</div>
-        <h3>{step['title']}</h3>
-        <p>{step['narration']}</p>
+        <h3 style="margin:8px 0 12px;">{step['title']}</h3>
+        <p style="line-height:1.7; color:#D0E8FF;">{step['narration']}</p>
+        <ul style="margin-top:14px; padding-left:18px; color:rgba(255,255,255,0.9); line-height:1.6; font-size:0.88rem;">
+            {points_html}
+        </ul>
     </div>
     """)
 
+    # ── Prev / Next ─────────────────────────────────────────────────────────
     prev_col, _, next_col = st.columns([1, 4, 1])
     with prev_col:
         if step_idx > 0:
@@ -2243,52 +2272,101 @@ def render_demo_script():
 
     st.markdown("---")
 
-    # Pick demo personas
-    fuel_rows = customers_df[customers_df["gas_rewards_ind_6m"] == True]
+    # ── Demo personas ───────────────────────────────────────────────────────
+    fuel_rows    = customers_df[customers_df["gas_rewards_ind_6m"] == True]
     premium_rows = customers_df[customers_df["clv_tier_level_id"] == "4U+"]
-    fuel_cust    = fuel_rows.iloc[0].to_dict() if not fuel_rows.empty else customers_df.iloc[0].to_dict()
+    gr_rows      = customers_df[customers_df["current_point_balance"] >= 1000].sort_values(
+                       "current_point_balance", ascending=False)
+    churn_rows   = customers_df[customers_df["churn_segment_cd"] == "High Risk"]
+
+    fuel_cust    = fuel_rows.iloc[0].to_dict()    if not fuel_rows.empty    else customers_df.iloc[0].to_dict()
     premium_cust = premium_rows.iloc[0].to_dict() if not premium_rows.empty else customers_df.iloc[1].to_dict()
+    gr_cust      = gr_rows.iloc[0].to_dict()      if not gr_rows.empty      else customers_df.iloc[2].to_dict()
+    churn_cust   = churn_rows.iloc[0].to_dict()   if not churn_rows.empty   else customers_df.iloc[3].to_dict()
 
     highlight = step["highlight"]
     customer  = step["customer"]
 
-    if highlight == "criteria":
+    cust_map = {
+        "fuel":    fuel_cust,
+        "premium": premium_cust,
+        "gr":      gr_cust,
+        "churn":   churn_cust,
+    }
+    cust = cust_map.get(customer)
+
+    # ── Highlight renderers ─────────────────────────────────────────────────
+    if highlight == "before":
+        screenshot_path = os.path.join(os.path.dirname(__file__), "assets", "prod_screenshot.png")
+        if os.path.exists(screenshot_path):
+            st.html("""
+            <div style="background:#FEF2F2; border:2px solid #FECACA; border-radius:10px;
+                        padding:10px 16px; margin-bottom:12px; display:flex; align-items:center; gap:10px;">
+                <span style="font-size:1.3rem;">⚠️</span>
+                <span style="font-weight:600; color:#991B1B; font-size:0.92rem;">
+                    Current State — Albertsons for U Production Today
+                </span>
+            </div>
+            """)
+            from PIL import Image
+            img = Image.open(screenshot_path)
+            col_l, col_c, col_r = st.columns([1, 2, 1])
+            with col_c:
+                st.image(img, use_container_width=True)
+            st.html("""
+            <div style="text-align:center; color:#9CA3AF; font-size:0.78rem; margin-top:4px;">
+                527 offers clipped · Same list for every customer · Manually ranked, not personalised
+            </div>
+            """)
+        else:
+            st.warning("Screenshot not found at files/assets/prod_screenshot.png")
+
+    elif highlight == "criteria":
         render_allocation_criteria()
 
     elif highlight == "stats":
         fuel_count    = int(customers_df["gas_rewards_ind_6m"].sum())
         premium_count = len(customers_df[customers_df["clv_tier_level_id"] == "4U+"])
         high_pts      = len(customers_df[customers_df["current_point_balance"] >= 1000])
-        avg_score     = scored_df["score"].mean()
+        churn_count   = len(customers_df[customers_df["churn_segment_cd"] == "High Risk"])
+        model_count   = scored_df["model_type"].nunique()
 
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("Total Households",    f"{len(customers_df):,}")
-        c2.metric("Fuel Redeemers",      f"{fuel_count}")
+        c2.metric("Offers in Catalog",   f"{len(offers_df)}")
         c3.metric("for U+ Subscribers",  f"{premium_count}")
-        c4.metric("Avg Offer Score",      f"{avg_score:.1f}")
+        c4.metric("High Churn Risk",      f"{churn_count}")
+        c5.metric("Scoring Models",       f"{model_count}")
         st.markdown("")
-        c5, c6 = st.columns(2)
-        c5.metric("Offers in Catalog",   f"{len(offers_df)}")
-        c6.metric("High Points (1000+)", f"{high_pts}")
+        c6, c7, c8 = st.columns(3)
+        c6.metric("Fuel Redeemers",      f"{fuel_count}")
+        c7.metric("High Points (1000+)", f"{high_pts}")
+        c8.metric("Scored Pairs",        f"{len(scored_df):,}")
 
     elif highlight == "profile":
-        cust = fuel_cust if customer == "fuel" else premium_cust
         render_profile(cust)
 
     elif highlight == "offers":
-        cust = fuel_cust if customer == "fuel" else premium_cust
         render_offers(cust, cust["household_id"])
+
+    elif highlight == "rewards":
+        render_rewards(cust, cust["household_id"])
+
+    elif highlight == "compare_models":
+        render_model_comparison(cust["household_id"])
 
     elif highlight == "compare":
         hid_a = fuel_cust["household_id"]
         hid_b = premium_cust["household_id"]
+        name_a = f"{fuel_cust.get('full_name', hid_a)}"
+        name_b = f"{premium_cust.get('full_name', hid_b)}"
 
         col_a, col_b = st.columns(2)
         with col_a:
-            st.html(f'<div class="compare-header">⛽ {hid_a} — Fuel Redeemer</div>')
+            st.html(f'<div class="compare-header">⛽ {name_a} — Fuel Redeemer</div>')
             st.html(_customer_summary_html(hid_a))
         with col_b:
-            st.html(f'<div class="compare-header">★ {hid_b} — for U+ Subscriber</div>')
+            st.html(f'<div class="compare-header">★ {name_b} — for U+ Subscriber</div>')
             st.html(_customer_summary_html(hid_b))
 
         st.markdown("#### Their Top 3 Offers")
@@ -2319,6 +2397,47 @@ def render_demo_script():
                         </div>
                     </div>
                     """)
+
+    elif highlight == "so_what":
+        st.html("""
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:8px;">
+
+            <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:10px; padding:18px;">
+                <div style="font-size:1.4rem; font-weight:800; color:#16A34A;">15–30%</div>
+                <div style="font-weight:600; color:#15803D; margin-bottom:6px;">Redemption Lift</div>
+                <div style="font-size:0.85rem; color:#555;">Personalised offers historically drive higher redemption rates vs generic broadcast offers.</div>
+            </div>
+
+            <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:10px; padding:18px;">
+                <div style="font-size:1.4rem; font-weight:800; color:#1D4ED8;">↑ Points Utilisation</div>
+                <div style="font-weight:600; color:#1E40AF; margin-bottom:6px;">Reduce Breakage</div>
+                <div style="font-size:0.85rem; color:#555;">Surfacing expiring-points GR offers drives basket visits and reduces points breakage liability.</div>
+            </div>
+
+            <div style="background:#FFF7ED; border:1px solid #FED7AA; border-radius:10px; padding:18px;">
+                <div style="font-size:1.4rem; font-weight:800; color:#EA580C;">eCommerce Migration</div>
+                <div style="font-weight:600; color:#C2410C; margin-bottom:6px;">Nudge, Don't Push</div>
+                <div style="font-size:0.85rem; color:#555;">The Fuel redeemer nudge strategy surfaces digital offers without disrupting offline habits.</div>
+            </div>
+
+            <div style="background:#FDF4FF; border:1px solid #E9D5FF; border-radius:10px; padding:18px;">
+                <div style="font-size:1.4rem; font-weight:800; color:#7C3AED;">Churn Prevention</div>
+                <div style="font-weight:600; color:#6D28D9; margin-bottom:6px;">Win-Back at Scale</div>
+                <div style="font-size:0.85rem; color:#555;">High churn risk customers get high-value personalised offers automatically — no manual campaign needed.</div>
+            </div>
+
+            <div style="background:#F0F9FF; border:1px solid #BAE6FD; border-radius:10px; padding:18px; grid-column:1/-1;">
+                <div style="font-size:1.1rem; font-weight:800; color:#0369A1;">One Pipeline. One Table. Every Team Benefits.</div>
+                <div style="font-size:0.88rem; color:#555; margin-top:6px; line-height:1.6;">
+                    <b>c360_scored_offers</b> is a new C360 asset — it doesn't exist today.
+                    The app reads it to show personalised offers. Analytics reads it to measure lift.
+                    Marketing reads it to plan campaigns. ML reads it to track model drift.
+                    SmartRewards turns the existing C360 data investment into a personalisation engine.
+                </div>
+            </div>
+
+        </div>
+        """)
 
 
 # ─── PAGE: SEGMENT EXPLORER ───────────────────────────────────────────────────
