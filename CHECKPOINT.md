@@ -37,6 +37,22 @@
 - Covers all pure scoring functions: `score_transaction_affinity`, `score_redemption_match`, `score_points_eligibility`, `score_cart_affinity`, `score_demographic_match`, `score_standard_offer`, `score_grocery_reward`, `passes_business_rules`, `run_batch_scoring`
 - All 59 passing (`python3 -m pytest tests/test_scoring.py -v`)
 
+#### 4. Customer / Analyst persona toggle
+
+- Sidebar gains two buttons: `🛒 Customer` and `📊 Analyst` — active persona shown as filled (primary), inactive as ghost
+- **Customer View nav:** My Offers · My Rewards · My Clipped Offers · My Profile
+- **Analyst View nav:** Segment Explorer · Compare Customers · Compare Models · Feature Weight Studio · Feature Engineer · How Offers Are Scored · Demo Script
+- Coloured pill in page header reflects active persona (blue = Customer, purple = Analyst)
+- Persona stored in `st.session_state.persona`; switching resets to first page of that view
+- **File:** `files/app.py`
+
+#### 5. Productionalization roadmap
+
+- Created `docs/productionalization.md` — what needs to change to serve millions of customers
+- Covers: BigQuery migration, distributed batch scoring (Dataflow/Spark), Vertex AI model training, Cloud Run API, frontend split (React Native + Retool), real-time triggers, monitoring, CCPA compliance
+- Phased delivery plan P1→P5 with effort estimates and dependencies
+- Key clarification: `c360_scored_offers` is a POC-built table, not an existing C360 asset
+
 - `render_model_comparison()` was filtering `model_type == "propensity_standard"` — DB stores `model_type = 'propensity'`
 - Same root cause as DEF-011 (fixed on My Offers in Session 10) but missed in the Compare Models function
 - **Fix:** Changed filter to `model_type == "propensity"`
@@ -188,6 +204,7 @@ HackathonProject/
 │   ├── scoring_engine.md            # Both scoring paths with formulas
 │   ├── data_model.md                # 18-table schema reference
 │   ├── ml_roadmap.md                # Phase 4 ML upgrade plan
+│   ├── productionalization.md       # What needs to change for production at scale
 │   └── images/                      # Rendered PNG diagrams
 ├── tests/
 │   └── test_scoring.py              # 59 unit tests for rule-based scoring (no DB)
@@ -250,6 +267,8 @@ HackathonProject/
 - Login dropdown, sidebar switcher, Compare Customers dropdowns/headers, Segment Explorer picker — all now show real customer names in `"Full Name (HH00001)"` format
 - Fixed Compare Models Propensity (Standard) column empty — `propensity_standard` model_type mismatch (DEF-015)
 - Added 59 unit tests for rule-based scoring engine (`tests/test_scoring.py`) — no DB required, all passing
+- Customer / Analyst persona toggle in sidebar with coloured header pill
+- Created `docs/productionalization.md` — full production roadmap (infra, ML, API, frontend, monitoring, compliance)
 
 ### Session 10 — 2026-03-18
 - Moved Propensity (GR) toggle from My Offers to My Rewards; fixed `propensity_standard` → `propensity` model_type bug
