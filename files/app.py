@@ -727,21 +727,59 @@ def page_dashboard():
         if clipped_count:
             st.markdown(f"✂️ **{clipped_count} offer{'s' if clipped_count > 1 else ''} clipped**")
         st.markdown("---")
-        nav = st.radio(
-            "Navigate",
-            ["My Offers", "My Rewards", "My Clipped Offers", "My Profile", "Segment Explorer",
-             "Compare Customers", "Compare Models", "Feature Weight Studio", "How Offers Are Scored", "Feature Engineer", "Demo Script"],
-            label_visibility="collapsed"
-        )
+
+        # ── Persona toggle ──────────────────────────────────────────────────
+        if "persona" not in st.session_state:
+            st.session_state.persona = "customer"
+
+        col_cust, col_biz = st.columns(2)
+        with col_cust:
+            if st.button("🛒 Customer", use_container_width=True,
+                         type="primary" if st.session_state.persona == "customer" else "secondary"):
+                st.session_state.persona = "customer"
+                st.session_state.page = "dashboard"
+                st.rerun()
+        with col_biz:
+            if st.button("📊 Analyst", use_container_width=True,
+                         type="primary" if st.session_state.persona == "business" else "secondary"):
+                st.session_state.persona = "business"
+                st.session_state.page = "dashboard"
+                st.rerun()
+
+        st.markdown("---")
+
+        if st.session_state.persona == "customer":
+            st.html('<p style="color:rgba(255,255,255,0.55); font-size:0.72rem; margin:0 0 6px 0; text-transform:uppercase; letter-spacing:0.05em;">Customer View</p>')
+            nav = st.radio(
+                "Navigate",
+                ["My Offers", "My Rewards", "My Clipped Offers", "My Profile"],
+                label_visibility="collapsed"
+            )
+        else:
+            st.html('<p style="color:rgba(255,255,255,0.55); font-size:0.72rem; margin:0 0 6px 0; text-transform:uppercase; letter-spacing:0.05em;">Analyst View</p>')
+            nav = st.radio(
+                "Navigate",
+                ["Segment Explorer", "Compare Customers", "Compare Models",
+                 "Feature Weight Studio", "Feature Engineer", "How Offers Are Scored", "Demo Script"],
+                label_visibility="collapsed"
+            )
+
         st.markdown("---")
         if st.button("Sign Out"):
             logout()
             st.rerun()
 
+    persona = st.session_state.get("persona", "customer")
+    if persona == "customer":
+        persona_pill = '<span style="background:#E0F2FE; color:#0369A1; font-size:0.75rem; font-weight:600; padding:3px 10px; border-radius:999px;">🛒 Customer View</span>'
+    else:
+        persona_pill = '<span style="background:#EDE9FE; color:#6D28D9; font-size:0.75rem; font-weight:600; padding:3px 10px; border-radius:999px;">📊 Analyst View</span>'
+
     st.html(f"""
     <div class="abs-header">
         <img src="data:image/svg+xml;base64,{LOGO_B64}" height="40"/>
         <span style="color:#A8C8F0; font-size:0.9rem;">Personalised Offers Engine &nbsp;|&nbsp; <i>for U</i> Loyalty Program</span>
+        &nbsp;&nbsp;{persona_pill}
     </div>
     """)
 
