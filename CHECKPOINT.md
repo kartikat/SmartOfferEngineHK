@@ -1,13 +1,98 @@
-# SmartRewards — Session Checkpoint
+# SmartOfferEngine — Session Checkpoint
 
 > Updated after each `/checkpoint` command. Reflects the latest state of the project.
 
 ---
 
 ## Project
-**SmartRewards** — AI-powered personalised loyalty offer engine for Albertsons *for U* program.
+**SmartOfferEngine** — AI-powered personalised loyalty offer engine for Albertsons *for U* program.
 - Stack: Python, FastAPI, Streamlit 1.55.0, PostgreSQL 16 (Homebrew)
 - Purpose: Hackathon demo
+
+---
+
+## Session 14 — 2026-03-20
+
+### What was done
+
+#### 1. Tech stack pills in demo panel
+
+- Added "Built with" section at the bottom of the presenter panel, separated by a subtle divider line
+- Six frosted-glass pills always visible on every demo step: 🐍 Python · ⚡ FastAPI · 🎈 Streamlit · 🤖 XGBoost · 🐘 PostgreSQL · ☁️ C360 Schema
+
+#### 2. Architecture diagram on Step 5 (last demo slide)
+
+- `docs/images/01_system_overview.png` (1904×1289) renders below the business impact cards on the "What This Unlocks" slide
+- "System Architecture" label in small caps above the image
+- Visible in both demo mode (left 50% column) and normal Demo Script view
+
+#### 3. Problem Exploration page — new Analyst View nav item
+
+- First item in Analyst View nav, leads the story before any live demo
+- Two-column persona layout:
+  - **Left — Customer (Alex, for U+)**: blue card with 5 pain points + 4 needs (527 offers overwhelming, same Bakery promo for everyone, 2,800 points expiring unnoticed, clips 3–4 and ignores the rest, no signal 4U+ matters)
+  - **Right — Business User (Jordan, Loyalty Manager)**: purple card with 5 pain points + 4 needs (manual weekly ranking, no redemption signal, ~30% points breakage, lapsed = loyal same campaign, C360 data unused)
+- Bottom: Albertsons blue gap banner — *"The data to personalise at scale already exists. SmartOfferEngine adds one new table: `c360_scored_offers`."*
+- `render_problem_exploration()` function; dispatch added to `_dispatch_page()`
+
+---
+
+## Session 13 — 2026-03-20
+
+### What was done
+
+#### 1. Persistent demo panel — 50% width, collapsible
+
+- `🎬 Present` button in sidebar (above Sign Out) enters presentation mode
+- Content area splits 50/50: live app on left, dark-blue presenter panel on right
+- Panel shows: `🎬 PRESENTING` badge, step dots, step tag, title, narration excerpt, 3 talking points, `📍 Navigate to:` badge
+- `← Back` / `Next →` buttons auto-navigate the left pane AND switch persona:
+  - Step 1 → Demo Script (production screenshot)
+  - Step 2 → Segment Explorer (live C360 stats)
+  - Step 3 → Compare Customers (side-by-side rankings)
+  - Step 4 → Compare Models (AI vs rule-based deltas)
+  - Step 5 → Demo Script (business impact cards)
+- `◀ Hide` button in panel collapses it to full-width; small `▶` button top-right re-expands
+- `⏹ Exit Presentation` restores normal full-width layout
+- `demo_panel_open` resets to True on every new presentation start
+- `render_demo_script()` in demo mode renders only visual content — narration/talking points move to panel; full script preserved in non-demo mode
+- DEMO_STEPS updated with `nav_page` and `persona` fields per step
+- Sidebar radios made index-controlled from `st.session_state.nav_page` so panel Next/Prev can drive navigation
+
+#### 2. One-click Simulate Purchase CTA on My Offers
+
+- Pre-scripted: `🛒 Simulate: Customer just bought Meat ($45)` — single blue primary button at top of My Offers page
+- On click:
+  1. Inserts `c360_txn` header record (txn_dte, net_sales, gross_amt, item_qty, ecom_ind)
+  2. Inserts `c360_txn_upc` line item (upc_id from Meat department, household_id, store_id)
+  3. Updates `c360_cat_affinity` — boosts Meat affinity by +0.30 (capped at 1.0); inserts row if none exists
+  4. Re-runs `files/engine/scoring.py` via subprocess (~1.1s for 120 households)
+  5. Clears `load_scored` cache — page rerenders with fresh rankings
+- Green delta banner shows after rerender: which offers moved up (▲) and down (▼) with rank changes
+- `↺ Reset simulation` button clears the delta state
+- Demo story: *"Watch the engine react — Meat offers jump to #1 and #2 the moment this customer makes a purchase. This is the real-time trigger from the C360 transaction stream."*
+- Bug fixed: initial version used wrong column names (`upc_cd`, `dept_dsc`, `unit_price_amt`) — corrected to actual schema (`upc_id`, `department_nm`; transaction tables use `txn_dte`, `net_sales`, `gross_amt`, `item_qty`, `ecom_ind`)
+- Session state keys: `sim_before_{hid}`, `sim_done_{hid}` — scoped per household so switching customers resets state
+
+---
+
+## Session 12 — 2026-03-20
+
+### What was done
+
+#### 1. Real Albertsons category images — replaced all emoji icons
+
+- Fetched 9 real department photos from the Albertsons CDN (`images.albertsons-media.com`) using browser-like request headers
+- Categories covered: Produce, Meat, Bakery, Deli, Frozen, Seafood, Dairy, Grocery, Household
+- Fuel has no accessible image on the CDN — falls back to ⛽ emoji
+- Each image center-cropped to square and resized to 56×56 JPEG thumbnail
+- All 9 images encoded as base64 JPEG and stored in `files/assets/category_images.py`
+  - File loaded at startup via `importlib.util.spec_from_file_location` (keeps app.py clean)
+  - Stored as `CATEGORY_IMG_B64: dict[str, str]`
+- `CATEGORY_ICONS` dict replaced with `CATEGORY_KEY_MAP` — maps category keywords to image keys (or emoji fallback)
+- `category_icon(category_nm, size=36)` now returns `<img src="data:image/jpeg;base64,..." width="36" height="36" style="border-radius:6px;" />` HTML for all 9 categories with real images
+- Raw source photos saved in `files/assets/categories/` (bakery.jpg, dairy.jpg, deli.jpg, frozen.jpg, grocery.jpg, household.jpg, meat.jpg, produce.jpg, seafood.jpg)
+- Both offer card renderers (My Offers line ~1003, My Rewards line ~1270) automatically pick up real images via `category_icon()` — no other changes needed
 
 ---
 
@@ -220,7 +305,10 @@ HackathonProject/
 │   ├── productionalization.md       # What needs to change for production at scale
 │   └── images/                      # Rendered PNG diagrams
 ├── files/assets/
-│   └── prod_screenshot.png          # Real Albertsons for U app screenshot (Step 1 of demo)
+│   ├── prod_screenshot.png          # Real Albertsons for U app screenshot (Step 1 of demo)
+│   ├── albertsons_icon.png          # Albertsons favicon (128×128) — used in browser tab, header, sidebar
+│   ├── category_images.py           # 9 real Albertsons dept photos, 56×56 JPEG base64 thumbnails
+│   └── categories/                  # Source images (bakery/dairy/deli/frozen/grocery/household/meat/produce/seafood.jpg)
 ├── tests/
 │   └── test_scoring.py              # 59 unit tests for rule-based scoring (no DB)
 └── files/
@@ -242,7 +330,7 @@ HackathonProject/
 
 ## Next Steps
 
-- [ ] **Embedding model (Phase 4c)** — two-tower / matrix factorisation on `c360_redemptions`; blocked on >10k real redemption events (teammate transaction flow build)
+- [ ] **Embedding model (Phase 4c)** — two-tower / matrix factorisation on `c360_redemptions`; can unblock by expanding `generate_data.py` with 500 households + 10k+ correlated synthetic redemptions (Option 1); teammate transaction flow not required for this
 - [ ] **Transfer to office laptop** — `smartrewards_dump.sql` exists at project root
 - [ ] **SHAP values (Phase 4e)** — deprioritised; revisit after team reviews SHAP theory (SHapley Additive exPlanations)
 
@@ -268,8 +356,9 @@ HackathonProject/
   - Checkout flow writing to `c360_txn`, `c360_txn_upc`, `c360_redemptions`
   - Integration point: `c360_redemptions` schema already in place
 
-- [x] **UI Visual Refresh — Phase 1 complete**
-  - Category icons (emoji), discount badge colouring, login card, sidebar tier badge, offer card redesign, expiry pills, My Rewards card alignment
+- [x] **UI Visual Refresh — Phase 2 complete**
+  - Session 8: Category icons (emoji), discount badge colouring, login card, sidebar tier badge, offer card redesign, expiry pills
+  - Session 12: Real Albertsons category photos replacing emoji icons (9 categories), My Rewards card alignment
 
 - [x] **Feature Engineer — wired to production engine**
   - Now reads/writes `FEATURE_COLS_STANDARD` + `FEATURE_COLS_GR` from `scoring_ml.py`; retrains the models that actually feed the UI
@@ -277,6 +366,19 @@ HackathonProject/
 ---
 
 ## Previous Sessions
+
+### Session 14 — 2026-03-20
+- Tech stack pills in demo panel (Python · FastAPI · Streamlit · XGBoost · PostgreSQL · C360 Schema)
+- Architecture diagram on Step 5 last slide (`01_system_overview.png`)
+- Problem Exploration page — two persona cards (Customer + Business User) with pain points, needs, and gap banner
+
+### Session 13 — 2026-03-20
+- Persistent demo panel (50% width, collapsible) — `🎬 Present` sidebar button, auto-navigation per step
+- One-click `🛒 Simulate Purchase` on My Offers — records Meat transaction, boosts affinity, re-scores (~1.1s), shows rank delta banner
+
+### Session 12 — 2026-03-20
+- Replaced all emoji category icons with real Albertsons department photos (9 categories from CDN)
+- `category_icon()` now returns `<img>` HTML with base64-embedded 56×56 JPEG thumbnails
 
 ### Session 11 — 2026-03-18
 - Login dropdown, sidebar switcher, Compare Customers dropdowns/headers, Segment Explorer picker — all now show real customer names in `"Full Name (HH00001)"` format
