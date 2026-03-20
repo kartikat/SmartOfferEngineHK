@@ -421,12 +421,12 @@ def simulate_purchase(hid: str) -> dict:
     with _engine.begin() as conn:
         # 1. Grab a Meat UPC (fall back to any UPC if none found)
         row = conn.execute(text("""
-            SELECT upc_cd, unit_price_amt
+            SELECT upc_id
             FROM c360_upc
-            WHERE LOWER(dept_dsc) LIKE '%meat%'
+            WHERE LOWER(department_nm) LIKE '%meat%'
             LIMIT 1
         """)).fetchone()
-        upc_cd, unit_price = (row[0], float(row[1])) if row else ("00000000001", _SIM_SPEND / _SIM_QTY)
+        upc_id = row[0] if row else "00000000001"
 
         # 2. Pick a store this household has visited before
         store_row = conn.execute(text("""
@@ -442,21 +442,23 @@ def simulate_purchase(hid: str) -> dict:
         txn_id = str(_uuid.uuid4())
         conn.execute(text("""
             INSERT INTO c360_txn
-                (txn_id, household_id, store_id, txn_dt, txn_total_amt,
-                 channel_cd, basket_size_qty)
+                (txn_id, household_id, store_id, txn_dte, txn_ts,
+                 net_sales, gross_amt, item_qty, ecom_ind)
             VALUES
-                (:txn_id, :hid, :store, NOW(), :total, 'IN_STORE', :qty)
+                (:txn_id, :hid, :store, CURRENT_DATE, NOW(),
+                 :total, :total, :qty, FALSE)
         """), {"txn_id": txn_id, "hid": hid, "store": store_id,
                "total": _SIM_SPEND, "qty": _SIM_QTY})
 
         # 4. Insert line item
         conn.execute(text("""
             INSERT INTO c360_txn_upc
-                (txn_id, receipt_line_nbr, upc_cd, unit_price_amt,
-                 quantity_nbr, ext_net_amt)
-            VALUES (:txn_id, 1, :upc, :price, :qty, :total)
-        """), {"txn_id": txn_id, "upc": upc_cd, "price": unit_price,
-               "qty": _SIM_QTY, "total": _SIM_SPEND})
+                (txn_id, receipt_line_nbr, upc_id, household_id,
+                 store_id, txn_dte, net_sales, gross_amt, item_qty)
+            VALUES (:txn_id, 1, :upc, :hid, :store, CURRENT_DATE,
+                    :total, :total, :qty)
+        """), {"txn_id": txn_id, "upc": upc_id, "hid": hid,
+               "store": store_id, "total": _SIM_SPEND, "qty": _SIM_QTY})
 
         # 5. Boost Meat affinity (+0.30, capped at 1.0)
         updated = conn.execute(text("""
