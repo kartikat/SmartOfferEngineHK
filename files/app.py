@@ -403,6 +403,85 @@ scored_df    = load_scored()
 offers_df    = load_offers()
 
 
+# ─── SIMULATION ───────────────────────────────────────────────────────────────
+
+# Pre-scripted transaction: customer buys $45 of Meat
+_SIM_CATEGORY = "Meat"
+_SIM_SPEND    = 45.0
+_SIM_QTY      = 3
+_SIM_LABEL    = "🛒 Simulate: Customer just bought Meat ($45)"
+
+
+def simulate_purchase(hid: str) -> dict:
+    """Insert a synthetic Meat transaction and boost Meat affinity for this household.
+    Returns {"before": [(offer_dsc, score)], scores updated in DB after call}.
+    """
+    import subprocess, sys, uuid as _uuid
+
+    with _engine.begin() as conn:
+        # 1. Grab a Meat UPC (fall back to any UPC if none found)
+        row = conn.execute(text("""
+            SELECT upc_cd, unit_price_amt
+            FROM c360_upc
+            WHERE LOWER(dept_dsc) LIKE '%meat%'
+            LIMIT 1
+        """)).fetchone()
+        upc_cd, unit_price = (row[0], float(row[1])) if row else ("00000000001", _SIM_SPEND / _SIM_QTY)
+
+        # 2. Pick a store this household has visited before
+        store_row = conn.execute(text("""
+            SELECT store_id FROM c360_txn
+            WHERE household_id = :hid
+            LIMIT 1
+        """), {"hid": hid}).fetchone()
+        store_id = store_row[0] if store_row else conn.execute(
+            text("SELECT store_id FROM c360_store LIMIT 1")
+        ).fetchone()[0]
+
+        # 3. Insert transaction header
+        txn_id = str(_uuid.uuid4())
+        conn.execute(text("""
+            INSERT INTO c360_txn
+                (txn_id, household_id, store_id, txn_dt, txn_total_amt,
+                 channel_cd, basket_size_qty)
+            VALUES
+                (:txn_id, :hid, :store, NOW(), :total, 'IN_STORE', :qty)
+        """), {"txn_id": txn_id, "hid": hid, "store": store_id,
+               "total": _SIM_SPEND, "qty": _SIM_QTY})
+
+        # 4. Insert line item
+        conn.execute(text("""
+            INSERT INTO c360_txn_upc
+                (txn_id, receipt_line_nbr, upc_cd, unit_price_amt,
+                 quantity_nbr, ext_net_amt)
+            VALUES (:txn_id, 1, :upc, :price, :qty, :total)
+        """), {"txn_id": txn_id, "upc": upc_cd, "price": unit_price,
+               "qty": _SIM_QTY, "total": _SIM_SPEND})
+
+        # 5. Boost Meat affinity (+0.30, capped at 1.0)
+        updated = conn.execute(text("""
+            UPDATE c360_cat_affinity
+            SET affinity_score = LEAST(affinity_score + 0.30, 1.0)
+            WHERE household_id = :hid
+              AND LOWER(category_nm) LIKE '%meat%'
+        """), {"hid": hid}).rowcount
+
+        if updated == 0:
+            # No existing Meat row — insert one
+            conn.execute(text("""
+                INSERT INTO c360_cat_affinity
+                    (household_id, category_nm, affinity_score, rank_in_hh, is_current_ind)
+                VALUES (:hid, 'Meat', 0.80, 1, TRUE)
+            """), {"hid": hid})
+
+    # 6. Re-score all households (fast: ~120 HHs × 64 offers ≈ 1–2 s)
+    scoring_path = os.path.join(os.path.dirname(__file__), "engine", "scoring.py")
+    subprocess.run([sys.executable, scoring_path], capture_output=True, timeout=30)
+
+    # 7. Clear score cache so the page reloads fresh data
+    load_scored.clear()
+
+
 # ─── SESSION STATE ────────────────────────────────────────────────────────────
 
 if "household_id" not in st.session_state:
@@ -940,6 +1019,78 @@ def render_profile(customer: dict):
 
 def render_offers(customer: dict, hid: str):
     st.subheader("My Personalised Offers")
+
+    # ── Simulate Purchase CTA ────────────────────────────────────────────────
+    sim_key_before = f"sim_before_{hid}"
+    sim_key_done   = f"sim_done_{hid}"
+
+    # Capture "before" rankings just before running the simulation
+    _pre_offers = scored_df[
+        (scored_df["household_id"] == hid) &
+        (scored_df["model_type"] == "rule_based") &
+        (scored_df["program_type"] != "Grocery Reward")
+    ].sort_values("score", ascending=False).head(10)
+    _pre_list = [(r["offer_dsc"], round(float(r["score"]), 1))
+                 for _, r in _pre_offers.iterrows()]
+
+    if st.button(_SIM_LABEL, type="primary"):
+        st.session_state[sim_key_before] = _pre_list
+        with st.spinner("Recording transaction · Updating affinity · Re-scoring…"):
+            simulate_purchase(hid)
+        st.session_state[sim_key_done] = True
+        st.rerun()
+
+    # Show before/after delta after simulation
+    if st.session_state.get(sim_key_done):
+        before = st.session_state.get(sim_key_before, [])
+        before_rank = {name: i + 1 for i, (name, _) in enumerate(before)}
+
+        # Reload fresh scores after simulation
+        fresh = load_scored()
+        after_offers = fresh[
+            (fresh["household_id"] == hid) &
+            (fresh["model_type"] == "rule_based") &
+            (fresh["program_type"] != "Grocery Reward")
+        ].sort_values("score", ascending=False).head(10)
+
+        deltas = []
+        for new_rank, (_, row) in enumerate(after_offers.iterrows(), 1):
+            name = row["offer_dsc"]
+            old_rank = before_rank.get(name)
+            if old_rank is not None and old_rank != new_rank:
+                diff = old_rank - new_rank  # positive = moved up
+                deltas.append((diff, name, old_rank, new_rank))
+        deltas.sort(key=lambda x: -abs(x[0]))
+
+        moved_up   = [d for d in deltas if d[0] > 0]
+        moved_down = [d for d in deltas if d[0] < 0]
+
+        up_lines   = " &nbsp;·&nbsp; ".join(
+            f'<b>{n}</b> ▲{d}' for d, n, _, _ in moved_up[:3]
+        )
+        down_lines = " &nbsp;·&nbsp; ".join(
+            f'<b>{n}</b> ▼{abs(d)}' for d, n, _, _ in moved_down[:2]
+        )
+
+        st.html(f"""
+        <div style="background:#F0FDF4; border:2px solid #86EFAC; border-radius:10px;
+                    padding:12px 18px; margin-bottom:14px;">
+            <div style="font-weight:700; color:#15803D; margin-bottom:6px;">
+                ✅ Transaction recorded — offers re-ranked
+            </div>
+            <div style="font-size:0.85rem; color:#166534;">
+                🛒 &nbsp;Meat purchase ($45) added to transaction history
+                &nbsp;·&nbsp; Meat category affinity boosted
+            </div>
+            {"<div style='margin-top:8px; font-size:0.85rem; color:#15803D;'>▲ Moved up: " + up_lines + "</div>" if up_lines else ""}
+            {"<div style='font-size:0.85rem; color:#B45309;'>▼ Moved down: " + down_lines + "</div>" if down_lines else ""}
+        </div>
+        """)
+
+        if st.button("↺ Reset simulation", key=f"sim_reset_{hid}"):
+            del st.session_state[sim_key_done]
+            del st.session_state[sim_key_before]
+            st.rerun()
 
     # Model toggle — standard offers only; GR model lives on My Rewards
     model_choice = st.radio(
