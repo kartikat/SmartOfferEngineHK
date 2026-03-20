@@ -2831,6 +2831,18 @@ def render_demo_script():
         </div>
         """)
 
+        # Architecture diagram
+        arch_path = os.path.join(os.path.dirname(__file__), "..", "docs", "images", "01_system_overview.png")
+        if os.path.exists(arch_path):
+            st.markdown("")
+            st.html("""
+            <div style="font-size:0.8rem; font-weight:600; color:#6B7280;
+                        text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px;">
+                System Architecture
+            </div>
+            """)
+            st.image(arch_path, use_container_width=True)
+
 
 # ─── PAGE: SEGMENT EXPLORER ───────────────────────────────────────────────────
 
