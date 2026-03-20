@@ -785,21 +785,40 @@ def page_dashboard():
 
         st.markdown("---")
 
+        _customer_options = ["My Offers", "My Rewards", "My Clipped Offers", "My Profile"]
+        _analyst_options  = ["Segment Explorer", "Compare Customers", "Compare Models",
+                             "Feature Weight Studio", "Feature Engineer", "How Offers Are Scored", "Demo Script"]
+        _current_nav = st.session_state.get("nav_page", "My Offers")
+
         if st.session_state.persona == "customer":
             st.html('<p style="color:rgba(255,255,255,0.55); font-size:0.72rem; margin:0 0 6px 0; text-transform:uppercase; letter-spacing:0.05em;">Customer View</p>')
-            nav = st.radio(
-                "Navigate",
-                ["My Offers", "My Rewards", "My Clipped Offers", "My Profile"],
-                label_visibility="collapsed"
-            )
+            _idx = _customer_options.index(_current_nav) if _current_nav in _customer_options else 0
+            nav  = st.radio("Navigate", _customer_options, index=_idx,
+                            key="nav_customer", label_visibility="collapsed")
         else:
             st.html('<p style="color:rgba(255,255,255,0.55); font-size:0.72rem; margin:0 0 6px 0; text-transform:uppercase; letter-spacing:0.05em;">Analyst View</p>')
-            nav = st.radio(
-                "Navigate",
-                ["Segment Explorer", "Compare Customers", "Compare Models",
-                 "Feature Weight Studio", "Feature Engineer", "How Offers Are Scored", "Demo Script"],
-                label_visibility="collapsed"
-            )
+            _idx = _analyst_options.index(_current_nav) if _current_nav in _analyst_options else 0
+            nav  = st.radio("Navigate", _analyst_options, index=_idx,
+                            key="nav_analyst", label_visibility="collapsed")
+
+        # Keep nav_page in sync with manual sidebar selection
+        st.session_state.nav_page = nav
+
+        st.markdown("---")
+
+        # Demo mode toggle
+        if st.session_state.get("demo_mode", False):
+            if st.button("⏹ Exit Presentation", use_container_width=True):
+                st.session_state.demo_mode = False
+                st.rerun()
+        else:
+            if st.button("🎬 Present", use_container_width=True, type="primary"):
+                st.session_state.demo_mode = True
+                st.session_state.demo_step = 0
+                first = DEMO_STEPS[0]
+                st.session_state.nav_page = first.get("nav_page", "Demo Script")
+                st.session_state.persona  = first.get("persona", "business")
+                st.rerun()
 
         st.markdown("---")
         if st.button("Sign Out"):
@@ -820,28 +839,38 @@ def page_dashboard():
     </div>
     """)
 
-    if nav == "My Profile":
-        render_profile(customer)
-    elif nav == "My Offers":
-        render_offers(customer, hid)
-    elif nav == "My Rewards":
-        render_rewards(customer, hid)
-    elif nav == "My Clipped Offers":
-        render_clipped_offers(hid)
-    elif nav == "Compare Customers":
-        render_comparison(hid)
-    elif nav == "Compare Models":
-        render_model_comparison(hid)
-    elif nav == "Feature Weight Studio":
-        render_weight_studio(hid)
-    elif nav == "How Offers Are Scored":
-        render_allocation_criteria()
-    elif nav == "Feature Engineer":
-        render_feature_engineer()
-    elif nav == "Demo Script":
-        render_demo_script()
+    def _dispatch_page(nav):
+        if nav == "My Profile":
+            render_profile(customer)
+        elif nav == "My Offers":
+            render_offers(customer, hid)
+        elif nav == "My Rewards":
+            render_rewards(customer, hid)
+        elif nav == "My Clipped Offers":
+            render_clipped_offers(hid)
+        elif nav == "Compare Customers":
+            render_comparison(hid)
+        elif nav == "Compare Models":
+            render_model_comparison(hid)
+        elif nav == "Feature Weight Studio":
+            render_weight_studio(hid)
+        elif nav == "How Offers Are Scored":
+            render_allocation_criteria()
+        elif nav == "Feature Engineer":
+            render_feature_engineer()
+        elif nav == "Demo Script":
+            render_demo_script()
+        else:
+            render_segments()
+
+    if st.session_state.get("demo_mode", False):
+        main_col, panel_col = st.columns([4, 1], gap="medium")
+        with panel_col:
+            render_demo_panel()
+        with main_col:
+            _dispatch_page(nav)
     else:
-        render_segments()
+        _dispatch_page(nav)
 
 
 def render_profile(customer: dict):
@@ -2175,6 +2204,8 @@ DEMO_STEPS = [
         ],
         "customer": None,
         "highlight": "before",
+        "nav_page": "Demo Script",
+        "persona": "business",
     },
     {
         "tag": "Step 2 of 5",
@@ -2193,6 +2224,8 @@ DEMO_STEPS = [
         ],
         "customer": None,
         "highlight": "stats",
+        "nav_page": "Segment Explorer",
+        "persona": "business",
     },
     {
         "tag": "Step 3 of 5",
@@ -2212,6 +2245,8 @@ DEMO_STEPS = [
         ],
         "customer": "both",
         "highlight": "compare",
+        "nav_page": "Compare Customers",
+        "persona": "business",
     },
     {
         "tag": "Step 4 of 5",
@@ -2230,6 +2265,8 @@ DEMO_STEPS = [
         ],
         "customer": "premium",
         "highlight": "compare_models",
+        "nav_page": "Compare Models",
+        "persona": "business",
     },
     {
         "tag": "Step 5 of 5",
@@ -2248,68 +2285,181 @@ DEMO_STEPS = [
         ],
         "customer": None,
         "highlight": "so_what",
+        "nav_page": "Demo Script",
+        "persona": "business",
     },
 ]
 
 if "demo_step" not in st.session_state:
     st.session_state.demo_step = 0
+if "demo_mode" not in st.session_state:
+    st.session_state.demo_mode = False
+if "nav_page" not in st.session_state:
+    st.session_state.nav_page = "My Offers"
 
 
-def render_demo_script():
+_ANALYST_PAGES = {
+    "Segment Explorer", "Compare Customers", "Compare Models",
+    "Feature Weight Studio", "Feature Engineer", "How Offers Are Scored", "Demo Script",
+}
+
+
+def render_demo_panel():
+    """Right-side presenter panel: talking points + Prev/Next navigation."""
     step_idx = st.session_state.demo_step
     step     = DEMO_STEPS[step_idx]
     total    = len(DEMO_STEPS)
 
-    # ── Progress bar ────────────────────────────────────────────────────────
-    st.progress((step_idx) / (total - 1) if total > 1 else 1.0)
+    # Step dots
+    dots = "".join(
+        f'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;'
+        f'background:{"#FFD700" if i == step_idx else "rgba(255,255,255,0.3)"};'
+        f'margin:0 3px;"></span>'
+        for i in range(total)
+    )
 
-    # ── Step picker ─────────────────────────────────────────────────────────
-    step_labels = [f"{i+1}. {s['title']}" for i, s in enumerate(DEMO_STEPS)]
-    chosen = st.selectbox("Jump to step", step_labels, index=step_idx,
-                          label_visibility="collapsed")
-    chosen_idx = step_labels.index(chosen)
-    if chosen_idx != step_idx:
-        st.session_state.demo_step = chosen_idx
-        st.rerun()
-
-    st.markdown("")
-
-    # ── Narration + talking points ──────────────────────────────────────────
+    # Talking points
     points_html = "".join(
-        f'<li style="margin-bottom:6px;">{p}</li>'
+        f'<li style="margin-bottom:10px; line-height:1.5;">{p}</li>'
         for p in step.get("talking_points", [])
     )
+
+    nav_page = step.get("nav_page", "")
+    nav_badge = (
+        f'<div style="background:rgba(255,255,255,0.15); border-radius:8px; '
+        f'padding:6px 10px; font-size:0.78rem; color:#A8D8FF; margin-top:14px;">'
+        f'📍 {nav_page}</div>'
+    ) if nav_page else ""
+
     st.html(f"""
-    <div class="demo-step">
-        <div class="step-tag">Step {step_idx + 1} of {total} &nbsp;·&nbsp; {step['tag']}</div>
-        <h3 style="margin:8px 0 12px;">{step['title']}</h3>
-        <p style="line-height:1.7; color:#D0E8FF;">{step['narration']}</p>
-        <ul style="margin-top:14px; padding-left:18px; color:rgba(255,255,255,0.9); line-height:1.6; font-size:0.88rem;">
+    <div style="background:linear-gradient(160deg,#00529B,#003870); border-radius:14px;
+                padding:18px 16px; color:white; font-family:sans-serif; min-height:420px;
+                display:flex; flex-direction:column; gap:6px;">
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <span style="background:#E31837; color:white; font-size:0.68rem; font-weight:700;
+                         padding:3px 8px; border-radius:99px; letter-spacing:0.06em;">
+                🎬 PRESENTING
+            </span>
+            <span style="font-size:0.78rem; color:rgba(255,255,255,0.6);">
+                {step_idx + 1} / {total}
+            </span>
+        </div>
+
+        <div style="margin-bottom:2px;">{dots}</div>
+
+        <div style="font-size:0.72rem; color:#A8D8FF; font-weight:600; letter-spacing:0.04em;
+                    text-transform:uppercase; margin-top:6px;">
+            {step.get("tag", "")}
+        </div>
+
+        <div style="font-size:1.0rem; font-weight:700; line-height:1.3; margin-bottom:4px;">
+            {step["title"]}
+        </div>
+
+        <div style="font-size:0.82rem; color:rgba(255,255,255,0.8); line-height:1.55;
+                    border-left:3px solid rgba(255,255,255,0.2); padding-left:10px; margin-bottom:6px;">
+            {step["narration"][:220]}{"…" if len(step["narration"]) > 220 else ""}
+        </div>
+
+        <ul style="font-size:0.80rem; color:rgba(255,255,255,0.9); padding-left:16px;
+                   margin:0; flex:1;">
             {points_html}
         </ul>
+
+        {nav_badge}
     </div>
     """)
 
-    # ── Prev / Next ─────────────────────────────────────────────────────────
-    prev_col, _, next_col = st.columns([1, 4, 1])
+    # Prev / Next buttons
+    st.markdown("")
+    prev_col, next_col = st.columns(2)
     with prev_col:
-        if step_idx > 0:
-            if st.button("← Previous"):
-                st.session_state.demo_step -= 1
-                st.rerun()
+        prev_disabled = step_idx == 0
+        if st.button("← Back", use_container_width=True, disabled=prev_disabled):
+            st.session_state.demo_step -= 1
+            prev_step = DEMO_STEPS[st.session_state.demo_step]
+            st.session_state.nav_page = prev_step.get("nav_page", st.session_state.nav_page)
+            st.session_state.persona  = prev_step.get("persona", st.session_state.persona)
+            st.rerun()
     with next_col:
         if step_idx < total - 1:
-            if st.button("Next →", type="primary"):
+            if st.button("Next →", use_container_width=True, type="primary"):
                 st.session_state.demo_step += 1
+                next_step = DEMO_STEPS[st.session_state.demo_step]
+                st.session_state.nav_page = next_step.get("nav_page", st.session_state.nav_page)
+                st.session_state.persona  = next_step.get("persona", st.session_state.persona)
                 st.rerun()
         else:
-            if st.button("Restart", type="primary"):
+            if st.button("↺ Restart", use_container_width=True, type="primary"):
                 st.session_state.demo_step = 0
+                first_step = DEMO_STEPS[0]
+                st.session_state.nav_page = first_step.get("nav_page", "Demo Script")
+                st.session_state.persona  = first_step.get("persona", "business")
                 st.rerun()
 
-    st.markdown("---")
 
-    # ── Demo personas ───────────────────────────────────────────────────────
+def render_demo_script():
+    """Demo Script page.
+    In demo_mode=True: only renders the visual content for the current step
+                       (talking points live in the right panel).
+    In demo_mode=False: renders the full script with narration, talking points, and nav.
+    """
+    step_idx  = st.session_state.demo_step
+    step      = DEMO_STEPS[step_idx]
+    total     = len(DEMO_STEPS)
+    demo_mode = st.session_state.get("demo_mode", False)
+
+    if not demo_mode:
+        # ── Full script view (non-presentation) ─────────────────────────────
+        st.progress((step_idx) / (total - 1) if total > 1 else 1.0)
+
+        step_labels = [f"{i+1}. {s['title']}" for i, s in enumerate(DEMO_STEPS)]
+        chosen = st.selectbox("Jump to step", step_labels, index=step_idx,
+                              label_visibility="collapsed")
+        chosen_idx = step_labels.index(chosen)
+        if chosen_idx != step_idx:
+            st.session_state.demo_step = chosen_idx
+            st.rerun()
+
+        st.markdown("")
+
+        points_html = "".join(
+            f'<li style="margin-bottom:6px;">{p}</li>'
+            for p in step.get("talking_points", [])
+        )
+        st.html(f"""
+        <div class="demo-step">
+            <div class="step-tag">Step {step_idx + 1} of {total} &nbsp;·&nbsp; {step['tag']}</div>
+            <h3 style="margin:8px 0 12px;">{step['title']}</h3>
+            <p style="line-height:1.7; color:#D0E8FF;">{step['narration']}</p>
+            <ul style="margin-top:14px; padding-left:18px; color:rgba(255,255,255,0.9);
+                       line-height:1.6; font-size:0.88rem;">
+                {points_html}
+            </ul>
+        </div>
+        """)
+
+        prev_col, _, next_col = st.columns([1, 4, 1])
+        with prev_col:
+            if step_idx > 0:
+                if st.button("← Previous"):
+                    st.session_state.demo_step -= 1
+                    st.rerun()
+        with next_col:
+            if step_idx < total - 1:
+                if st.button("Next →", type="primary"):
+                    st.session_state.demo_step += 1
+                    st.rerun()
+            else:
+                if st.button("Restart", type="primary"):
+                    st.session_state.demo_step = 0
+                    st.rerun()
+
+        st.markdown("---")
+
+    # ── Visual content for current step ─────────────────────────────────────
+    # (rendered in both demo_mode and full script mode)
     fuel_rows    = customers_df[customers_df["gas_rewards_ind_6m"] == True]
     premium_rows = customers_df[customers_df["clv_tier_level_id"] == "4U+"]
     gr_rows      = customers_df[customers_df["current_point_balance"] >= 1000].sort_values(
