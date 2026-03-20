@@ -814,6 +814,7 @@ def page_dashboard():
         else:
             if st.button("🎬 Present", use_container_width=True, type="primary"):
                 st.session_state.demo_mode = True
+                st.session_state.demo_panel_open = True
                 st.session_state.demo_step = 0
                 first = DEMO_STEPS[0]
                 st.session_state.nav_page = first.get("nav_page", "Demo Script")
@@ -864,10 +865,20 @@ def page_dashboard():
             render_segments()
 
     if st.session_state.get("demo_mode", False):
-        main_col, panel_col = st.columns([4, 1], gap="medium")
-        with panel_col:
-            render_demo_panel()
-        with main_col:
+        panel_open = st.session_state.get("demo_panel_open", True)
+        if panel_open:
+            main_col, panel_col = st.columns([1, 1], gap="medium")
+            with panel_col:
+                render_demo_panel()
+            with main_col:
+                _dispatch_page(nav)
+        else:
+            # Panel collapsed — full width content + small expand button top-right
+            _, btn_col = st.columns([11, 1])
+            with btn_col:
+                if st.button("▶", help="Show presenter panel", use_container_width=True):
+                    st.session_state.demo_panel_open = True
+                    st.rerun()
             _dispatch_page(nav)
     else:
         _dispatch_page(nav)
@@ -2296,6 +2307,8 @@ if "demo_mode" not in st.session_state:
     st.session_state.demo_mode = False
 if "nav_page" not in st.session_state:
     st.session_state.nav_page = "My Offers"
+if "demo_panel_open" not in st.session_state:
+    st.session_state.demo_panel_open = True
 
 
 _ANALYST_PAGES = {
@@ -2309,6 +2322,13 @@ def render_demo_panel():
     step_idx = st.session_state.demo_step
     step     = DEMO_STEPS[step_idx]
     total    = len(DEMO_STEPS)
+
+    # Collapse button — right-aligned
+    _, collapse_col = st.columns([5, 1])
+    with collapse_col:
+        if st.button("◀ Hide", help="Collapse presenter panel", use_container_width=True):
+            st.session_state.demo_panel_open = False
+            st.rerun()
 
     # Step dots
     dots = "".join(
