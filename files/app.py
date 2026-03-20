@@ -867,7 +867,7 @@ def page_dashboard():
         st.markdown("---")
 
         _customer_options = ["My Offers", "My Rewards", "My Clipped Offers", "My Profile"]
-        _analyst_options  = ["Segment Explorer", "Compare Customers", "Compare Models",
+        _analyst_options  = ["Problem Exploration", "Segment Explorer", "Compare Customers", "Compare Models",
                              "Feature Weight Studio", "Feature Engineer", "How Offers Are Scored", "Demo Script"]
         _current_nav = st.session_state.get("nav_page", "My Offers")
 
@@ -942,6 +942,8 @@ def page_dashboard():
             render_feature_engineer()
         elif nav == "Demo Script":
             render_demo_script()
+        elif nav == "Problem Exploration":
+            render_problem_exploration()
         else:
             render_segments()
 
@@ -2842,6 +2844,107 @@ def render_demo_script():
             </div>
             """)
             st.image(arch_path, use_container_width=True)
+
+
+# ─── PAGE: PROBLEM EXPLORATION ────────────────────────────────────────────────
+
+def render_problem_exploration():
+    st.subheader("Problem Exploration")
+    st.caption("Who is affected by the current state — and what do they need?")
+    st.markdown("")
+
+    col_cust, col_biz = st.columns(2, gap="large")
+
+    # ── Customer Persona ────────────────────────────────────────────────────
+    with col_cust:
+        st.html("""
+        <div style="background:linear-gradient(135deg,#EFF6FF,#DBEAFE); border:2px solid #93C5FD;
+                    border-radius:16px; padding:24px; height:100%;">
+
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+                <div style="font-size:2.4rem;">🛒</div>
+                <div>
+                    <div style="font-size:1.1rem; font-weight:800; color:#1E3A5F;">The Customer</div>
+                    <div style="font-size:0.82rem; color:#3B82F6; font-weight:600;">Alex — for U+ Member, weekly shopper</div>
+                </div>
+            </div>
+
+            <div style="font-size:0.78rem; font-weight:700; color:#1D4ED8; text-transform:uppercase;
+                        letter-spacing:0.05em; margin-bottom:10px;">Pain Points Today</div>
+            <ul style="font-size:0.88rem; color:#1E3A5F; line-height:1.7; padding-left:18px; margin:0 0 18px 0;">
+                <li>Opens the app and sees <b>527 offers</b> — no guidance on which ones are relevant</li>
+                <li>Gets the same Bakery promo as everyone else, despite never buying Bakery</li>
+                <li>Has <b>2,800 points expiring in 7 days</b> — doesn't know they qualify for a $10 Meat reward</li>
+                <li>Clips 3–4 offers, ignores the rest — <b>not because they don't want deals, but because the list feels irrelevant</b></li>
+                <li>No signal that the for U+ tier is giving them anything extra</li>
+            </ul>
+
+            <div style="font-size:0.78rem; font-weight:700; color:#1D4ED8; text-transform:uppercase;
+                        letter-spacing:0.05em; margin-bottom:10px;">What They Need</div>
+            <ul style="font-size:0.88rem; color:#1E3A5F; line-height:1.7; padding-left:18px; margin:0;">
+                <li>A short, ranked list of offers that match <i>their</i> shopping habits</li>
+                <li>A nudge when their points are about to expire — surfacing the right reward at the right time</li>
+                <li>Exclusive offers that make the for U+ tier feel worthwhile</li>
+                <li>Confidence that the app knows them — and surfaces offers they'll actually use</li>
+            </ul>
+        </div>
+        """)
+
+    # ── Business User Persona ───────────────────────────────────────────────
+    with col_biz:
+        st.html("""
+        <div style="background:linear-gradient(135deg,#F5F3FF,#EDE9FE); border:2px solid #A78BFA;
+                    border-radius:16px; padding:24px; height:100%;">
+
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+                <div style="font-size:2.4rem;">📊</div>
+                <div>
+                    <div style="font-size:1.1rem; font-weight:800; color:#2E1065;">The Business User</div>
+                    <div style="font-size:0.82rem; color:#7C3AED; font-weight:600;">Jordan — Loyalty &amp; Offers Manager</div>
+                </div>
+            </div>
+
+            <div style="font-size:0.78rem; font-weight:700; color:#6D28D9; text-transform:uppercase;
+                        letter-spacing:0.05em; margin-bottom:10px;">Pain Points Today</div>
+            <ul style="font-size:0.88rem; color:#2E1065; line-height:1.7; padding-left:18px; margin:0 0 18px 0;">
+                <li>Manually ranks 64 offers every week — takes hours, still feels like guessing</li>
+                <li>No signal on <i>why</i> customers don't redeem — wrong offer? Wrong timing? Wrong channel?</li>
+                <li><b>~30% of loyalty points expire unused</b> — a real liability on the balance sheet</li>
+                <li>Lapsed customers receive the same win-back campaign as loyal weekly shoppers</li>
+                <li>C360 has rich data on every household — <b>none of it is being used to rank offers</b></li>
+            </ul>
+
+            <div style="font-size:0.78rem; font-weight:700; color:#6D28D9; text-transform:uppercase;
+                        letter-spacing:0.05em; margin-bottom:10px;">What They Need</div>
+            <ul style="font-size:0.88rem; color:#2E1065; line-height:1.7; padding-left:18px; margin:0;">
+                <li>Automated, personalised ranking so the team focuses on strategy — not manual curation</li>
+                <li>Segment-level insight: which customers are churning, which have expiring points, which are ready to upgrade</li>
+                <li>A feedback loop — redemption data flowing back to improve the next ranking run</li>
+                <li>One shared output table that marketing, analytics, and the app all read from</li>
+            </ul>
+        </div>
+        """)
+
+    # ── Shared gap ──────────────────────────────────────────────────────────
+    st.markdown("")
+    st.html("""
+    <div style="background:linear-gradient(135deg,#00529B,#003870); border-radius:14px;
+                padding:20px 28px; color:white; text-align:center;">
+        <div style="font-size:1.05rem; font-weight:800; margin-bottom:8px;">
+            The Gap — and Why It Exists
+        </div>
+        <div style="font-size:0.88rem; color:rgba(255,255,255,0.85); line-height:1.7; max-width:700px; margin:0 auto;">
+            Albertsons C360 already holds transaction history, category affinity, points balances,
+            churn scores, and channel preferences for every household.
+            The data to personalise offers at scale exists — it just isn't being used to rank them.
+            <br/><br/>
+            <b>SmartOfferEngine adds one new table to C360: <code style="background:rgba(255,255,255,0.15);
+            padding:2px 6px; border-radius:4px;">c360_scored_offers</code></b> —
+            a ranked, personalised offer list per household, rebuilt nightly,
+            solving both personas' problems with the same pipeline.
+        </div>
+    </div>
+    """)
 
 
 # ─── PAGE: SEGMENT EXPLORER ───────────────────────────────────────────────────
