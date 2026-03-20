@@ -2541,6 +2541,39 @@ def render_demo_panel():
         </ul>
 
         {nav_badge}
+
+        <!-- Tech stack -->
+        <div style="margin-top:16px; border-top:1px solid rgba(255,255,255,0.15); padding-top:12px;">
+            <div style="font-size:0.68rem; color:rgba(255,255,255,0.45); text-transform:uppercase;
+                        letter-spacing:0.06em; margin-bottom:8px;">Built with</div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                <span style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.2);
+                             border-radius:6px; padding:3px 8px; font-size:0.72rem; color:#E0F0FF;">
+                    🐍 Python
+                </span>
+                <span style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.2);
+                             border-radius:6px; padding:3px 8px; font-size:0.72rem; color:#E0F0FF;">
+                    ⚡ FastAPI
+                </span>
+                <span style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.2);
+                             border-radius:6px; padding:3px 8px; font-size:0.72rem; color:#E0F0FF;">
+                    🎈 Streamlit
+                </span>
+                <span style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.2);
+                             border-radius:6px; padding:3px 8px; font-size:0.72rem; color:#E0F0FF;">
+                    🤖 XGBoost
+                </span>
+                <span style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.2);
+                             border-radius:6px; padding:3px 8px; font-size:0.72rem; color:#E0F0FF;">
+                    🐘 PostgreSQL
+                </span>
+                <span style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.2);
+                             border-radius:6px; padding:3px 8px; font-size:0.72rem; color:#E0F0FF;">
+                    ☁️ C360 Schema
+                </span>
+            </div>
+        </div>
+
     </div>
     """)
 
