@@ -1,5 +1,5 @@
 """
-SmartRewards — Albertsons Loyalty Demo
+SmartOfferEngine — Albertsons Loyalty Demo
 Streamlit UI: Customer Login → Profile → Personalised Offers → Segment Explorer
 Run: streamlit run files/app.py
 """
@@ -10,7 +10,19 @@ import os
 import sys
 import streamlit as st
 import pandas as pd
+from PIL import Image
 from sqlalchemy import create_engine, text
+
+# Category images — real Albertsons photos, 56×56 JPEG thumbnails
+_cat_img_path = os.path.join(os.path.dirname(__file__), "assets", "category_images.py")
+if os.path.exists(_cat_img_path):
+    import importlib.util as _ilu
+    _spec = _ilu.spec_from_file_location("category_images", _cat_img_path)
+    _mod  = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    CATEGORY_IMG_B64: dict = _mod.CATEGORY_IMG_B64
+else:
+    CATEGORY_IMG_B64: dict = {}
 
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 
@@ -24,9 +36,20 @@ def _logo_b64() -> str:
 
 LOGO_B64 = _logo_b64()
 
+_icon_path = os.path.join(os.path.dirname(__file__), "assets", "albertsons_icon.png")
+_page_icon = Image.open(_icon_path) if os.path.exists(_icon_path) else "🛒"
+
+def _icon_b64() -> str:
+    if os.path.exists(_icon_path):
+        with open(_icon_path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    return ""
+
+ICON_B64 = _icon_b64()
+
 st.set_page_config(
-    page_title="SmartRewards | Albertsons",
-    page_icon="🛒",
+    page_title="SmartOfferEngine | Albertsons",
+    page_icon=_page_icon,
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -395,21 +418,22 @@ if "clipped_offers" not in st.session_state:
 
 # ─── CATEGORY ICONS ───────────────────────────────────────────────────────────
 
-CATEGORY_ICONS = {
-    "dairy eggs cheese": "🧀",
-    "dairy":             "🧀",
-    "produce":           "🥦",
-    "bakery":            "🍞",
-    "meat":              "🥩",
-    "seafood":           "🐟",
-    "deli":              "🥪",
-    "grocery":           "🛒",
-    "frozen":            "❄️",
-    "household":         "🧹",
-    "fuel":              "⛽",
-    "beverage":          "🥤",
-    "snacks":            "🍿",
-    "health":            "💊",
+# Maps category keyword → key in CATEGORY_IMG_B64 (or emoji fallback)
+CATEGORY_KEY_MAP = {
+    "dairy eggs cheese": "dairy",
+    "dairy":             "dairy",
+    "produce":           "produce",
+    "bakery":            "bakery",
+    "meat":              "meat",
+    "seafood":           "seafood",
+    "deli":              "deli",
+    "grocery":           "grocery",
+    "frozen":            "frozen",
+    "household":         "household",
+    "fuel":              "⛽",      # no image available — emoji fallback
+    "beverage":          "grocery",
+    "snacks":            "grocery",
+    "health":            "grocery",
 }
 
 DISCOUNT_COLORS = {
@@ -424,12 +448,19 @@ DISCOUNT_COLORS = {
 }
 
 
-def category_icon(category_nm: str) -> str:
-    """Return emoji for the offer's category (rep_category_nm), falling back to 🏷️."""
+def category_icon(category_nm: str, size: int = 36) -> str:
+    """Return an <img> tag with a real Albertsons category photo, or an emoji fallback."""
     key = (category_nm or "").strip().lower()
-    for k, icon in CATEGORY_ICONS.items():
+    for k, mapped in CATEGORY_KEY_MAP.items():
         if k in key:
-            return icon
+            if mapped in CATEGORY_IMG_B64:
+                b64 = CATEGORY_IMG_B64[mapped]
+                return (
+                    f'<img src="data:image/jpeg;base64,{b64}" '
+                    f'width="{size}" height="{size}" '
+                    f'style="border-radius:6px;object-fit:cover;vertical-align:middle;" />'
+                )
+            return mapped  # emoji fallback (e.g. ⛽)
     return "🏷️"
 
 
@@ -643,10 +674,10 @@ def page_login():
         st.html(f"""
         <div style="background:white; border-radius:20px; padding:44px 40px 36px 40px;
                     box-shadow:0 8px 40px rgba(0,82,155,0.13); text-align:center; margin-top:32px;">
-            <img src="data:image/svg+xml;base64,{LOGO_B64}" width="200"
+            <img src="data:image/png;base64,{ICON_B64}" width="60"
                  style="margin-bottom:20px; display:block; margin-left:auto; margin-right:auto;"/>
             <div style="font-size:1.35rem; font-weight:800; color:#00529B; margin-bottom:4px;">
-                SmartRewards
+                SmartOfferEngine
             </div>
             <div style="font-size:0.92rem; color:#6B7280; margin-bottom:32px;">
                 AI-Powered Personalised Loyalty Offers &nbsp;·&nbsp; <i>for U</i> Program
@@ -700,7 +731,13 @@ def page_dashboard():
     customer = customers_df[customers_df["household_id"] == hid].iloc[0].to_dict()
 
     with st.sidebar:
-        st.markdown(f"## 🛒 SmartRewards")
+        st.html(f"""
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+            <img src="data:image/png;base64,{ICON_B64}" height="32"
+                 style="filter: brightness(0) invert(1);"/>
+            <span style="color:white; font-size:1.2rem; font-weight:700;">SmartOfferEngine</span>
+        </div>
+        """)
 
         # Customer switcher
         all_options = customers_df.apply(
@@ -734,7 +771,7 @@ def page_dashboard():
 
         col_cust, col_biz = st.columns(2)
         with col_cust:
-            if st.button("🛒 Customer", use_container_width=True,
+            if st.button("Customer", use_container_width=True,
                          type="primary" if st.session_state.persona == "customer" else "secondary"):
                 st.session_state.persona = "customer"
                 st.session_state.page = "dashboard"
@@ -771,13 +808,13 @@ def page_dashboard():
 
     persona = st.session_state.get("persona", "customer")
     if persona == "customer":
-        persona_pill = '<span style="background:#E0F2FE; color:#0369A1; font-size:0.75rem; font-weight:600; padding:3px 10px; border-radius:999px;">🛒 Customer View</span>'
+        persona_pill = f'<span style="background:#E0F2FE; color:#0369A1; font-size:0.75rem; font-weight:600; padding:3px 10px; border-radius:999px;"><img src="data:image/png;base64,{ICON_B64}" height="12" style="vertical-align:middle; margin-right:4px;"/> Customer View</span>'
     else:
         persona_pill = '<span style="background:#EDE9FE; color:#6D28D9; font-size:0.75rem; font-weight:600; padding:3px 10px; border-radius:999px;">📊 Analyst View</span>'
 
     st.html(f"""
     <div class="abs-header">
-        <img src="data:image/svg+xml;base64,{LOGO_B64}" height="40"/>
+        <img src="data:image/png;base64,{ICON_B64}" height="40" style="filter: brightness(0) invert(1);"/>
         <span style="color:#A8C8F0; font-size:0.9rem;">Personalised Offers Engine &nbsp;|&nbsp; <i>for U</i> Loyalty Program</span>
         &nbsp;&nbsp;{persona_pill}
     </div>
@@ -2147,7 +2184,7 @@ DEMO_STEPS = [
             "a Fuel loyalist gets the same Bakery coupon as a Produce shopper. "
             "The data to do better already exists: Albertsons C360 has transaction history, "
             "channel preferences, points balances, churn scores, and redemption patterns "
-            "for every household. SmartRewards turns that data into personalised, ranked offers."
+            "for every household. SmartOfferEngine turns that data into personalised, ranked offers."
         ),
         "talking_points": [
             "Built on 18 real Albertsons C360 tables — zero new data sources required",
@@ -2198,7 +2235,7 @@ DEMO_STEPS = [
         "tag": "Step 5 of 5",
         "title": "What This Unlocks for Albertsons",
         "narration": (
-            "SmartRewards adds one new table to C360 — c360_scored_offers. "
+            "SmartOfferEngine adds one new table to C360 — c360_scored_offers. "
             "That single table becomes a shared asset across the business: "
             "the app reads it to surface personalised offers, analytics reads it to measure redemption lift, "
             "marketing reads it to plan targeted campaigns, and ML reads it to monitor model drift. "
@@ -2308,7 +2345,6 @@ def render_demo_script():
                 </span>
             </div>
             """)
-            from PIL import Image
             img = Image.open(screenshot_path)
             col_l, col_c, col_r = st.columns([1, 2, 1])
             with col_c:
@@ -2432,7 +2468,7 @@ def render_demo_script():
                     <b>c360_scored_offers</b> is a new C360 asset — it doesn't exist today.
                     The app reads it to show personalised offers. Analytics reads it to measure lift.
                     Marketing reads it to plan campaigns. ML reads it to track model drift.
-                    SmartRewards turns the existing C360 data investment into a personalisation engine.
+                    SmartOfferEngine turns the existing C360 data investment into a personalisation engine.
                 </div>
             </div>
 
@@ -2529,7 +2565,13 @@ def render_segments():
 
 def page_segments():
     with st.sidebar:
-        st.markdown("## 🛒 SmartRewards")
+        st.html(f"""
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+            <img src="data:image/png;base64,{ICON_B64}" height="32"
+                 style="filter: brightness(0) invert(1);"/>
+            <span style="color:white; font-size:1.2rem; font-weight:700;">SmartOfferEngine</span>
+        </div>
+        """)
         st.markdown("---")
         if st.button("← Back to Login"):
             st.session_state.page = "login"
@@ -2537,7 +2579,7 @@ def page_segments():
 
     st.html(f"""
     <div class="abs-header">
-        <img src="data:image/svg+xml;base64,{LOGO_B64}" height="40"/>
+        <img src="data:image/png;base64,{ICON_B64}" height="40" style="filter: brightness(0) invert(1);"/>
         <span style="color:#A8C8F0; font-size:0.9rem;">Segment Explorer</span>
     </div>
     """)
