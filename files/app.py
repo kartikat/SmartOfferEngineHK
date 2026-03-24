@@ -2972,7 +2972,7 @@ def render_problem_exploration():
             <div style="font-size:0.78rem; font-weight:700; color:#6D28D9; text-transform:uppercase;
                         letter-spacing:0.05em; margin-bottom:10px;">Pain Points Today</div>
             <ul style="font-size:0.88rem; color:#2E1065; line-height:1.6; padding-left:18px; margin:0 0 14px 0;">
-                <li>Scripts rank offers monthly; no centralized engine</li>
+                <li>Scripts manually rank hundreds of offers monthly — time-consuming and still feels like guessing</li>
                 <li>No insight into why customers don't redeem</li>
                 <li>30% of loyalty points expire unused</li>
                 <li>No segment-based campaigns or personalization</li>

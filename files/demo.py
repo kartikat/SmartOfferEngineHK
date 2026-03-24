@@ -1,5 +1,5 @@
 """
-SmartRewards — End-to-End Demo Runner
+SmartOfferEngine — End-to-End Demo Runner
 Run this to see the full pipeline in action without needing FastAPI.
 Usage: python demo.py
 """
@@ -37,7 +37,7 @@ def section(text):
 # ─── MAIN DEMO ───────────────────────────────────────────────────────────────
 
 def run_demo():
-    banner("SmartRewards — AI Powered Personalised Offer Engine")
+    banner("SmartOfferEngine — AI Powered Personalised Offer Engine")
 
     # Step 1: Generate data
     section("STEP 1 — Generating Synthetic Data")

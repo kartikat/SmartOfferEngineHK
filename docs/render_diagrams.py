@@ -35,7 +35,7 @@ def render_to_png(mermaid_src: str, out_path: Path) -> bool:
     url = f"https://mermaid.ink/img/{encoded}?type=png&bgColor=white"
     try:
         ctx = ssl.create_default_context(cafile=certifi.where())
-        req = urllib.request.Request(url, headers={"User-Agent": "SmartRewards/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "SmartOfferEngine/1.0"})
         with urllib.request.urlopen(req, timeout=30, context=ctx) as resp:
             data = resp.read()
         out_path.write_bytes(data)

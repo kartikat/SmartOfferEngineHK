@@ -1,4 +1,4 @@
-# ML Roadmap — SmartRewards Phase 4
+# ML Roadmap — SmartOfferEngine Phase 4
 
 > Upgrading from rule-based scoring to a 4-layer ML model.
 
@@ -125,7 +125,7 @@ Where α is tuned per customer segment (e.g. high for active customers, lower fo
 | Precision@K | Are the top K offers actually redeemed? |
 | Redemption lift | Scored offers vs random baseline |
 | Click-through rate | Clip rate on surfaced offers |
-| Points utilisation | % of expiring points redeemed via SmartRewards |
+| Points utilisation | % of expiring points redeemed via SmartOfferEngine |
 
 ---
 

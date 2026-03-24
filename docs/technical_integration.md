@@ -1,6 +1,6 @@
-# Technical Integration — SmartRewards
+# Technical Integration — SmartOfferEngine
 
-> How the SmartRewards engine connects to data sources, APIs, and front-end surfaces.
+> How the SmartOfferEngine engine connects to data sources, APIs, and front-end surfaces.
 
 ---
 

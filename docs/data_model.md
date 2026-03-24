@@ -1,4 +1,4 @@
-# Data Model — SmartRewards
+# Data Model — SmartOfferEngine
 
 > 18 PostgreSQL tables mirroring the Albertsons C360 BigQuery schema.
 

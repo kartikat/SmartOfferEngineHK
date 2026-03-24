@@ -1,5 +1,5 @@
 """
-SmartRewards — REST API
+SmartOfferEngine — REST API
 Serves pre-scored personalized offers per customer.
 Install: pip install fastapi uvicorn pandas
 Run:     uvicorn api.main:app --reload --port 8000
@@ -17,7 +17,7 @@ import json
 DATA_DIR = os.path.join(os.path.dirname(__file__), "../data")
 
 app = FastAPI(
-    title="SmartRewards API",
+    title="SmartOfferEngine API",
     description="Personalized offer recommendations for loyalty customers",
     version="1.0.0",
 )
@@ -84,7 +84,7 @@ class CustomerProfile(BaseModel):
 @app.get("/", tags=["Health"])
 def root():
     return {
-        "service": "SmartRewards API",
+        "service": "SmartOfferEngine API",
         "status": "running",
         "docs": "/docs"
     }
@@ -207,7 +207,7 @@ def get_4uplus_customers(
     limit: int = Query(default=20, ge=1, le=100)
 ):
     """
-    Return 4U+ high-tier subscribers — initial target segment for SmartRewards.
+    Return 4U+ high-tier subscribers — initial target segment for SmartOfferEngine.
     """
     if customers_df is None:
         raise HTTPException(status_code=503, detail="Data not loaded")

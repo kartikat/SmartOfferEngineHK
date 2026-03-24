@@ -1,4 +1,4 @@
-# SmartRewards — Offer Ranking Engine
+# SmartOfferEngine — Offer Ranking Engine
 
 AI-powered personalised rewards offer engine for loyalty customers.
 

@@ -1,5 +1,5 @@
 """
-SmartRewards — Rule-Based Offer Scoring Engine (PostgreSQL)
+SmartOfferEngine — Rule-Based Offer Scoring Engine (PostgreSQL)
 
 Reads from: c360_customer_profile, c360_offer, c360_cat_affinity,
             c360_txn, c360_redemptions, c360_rewards_redeemed, c360_freshpass

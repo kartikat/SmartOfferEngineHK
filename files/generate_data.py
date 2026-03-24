@@ -1,5 +1,5 @@
 """
-SmartRewards — Synthetic Data Generator
+SmartOfferEngine — Synthetic Data Generator
 Generates mock customers, transactions, and offers for demo/hackathon use.
 """
 

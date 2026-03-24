@@ -1,4 +1,4 @@
-# SmartRewards — Productionalization Roadmap
+# SmartOfferEngine — Productionalization Roadmap
 
 > What needs to change to take this hackathon proof-of-concept to a production system serving millions of Albertsons customers.
 

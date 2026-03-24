@@ -1,4 +1,4 @@
-# Customer Touchpoints — SmartRewards
+# Customer Touchpoints — SmartOfferEngine
 
 > Where and how customers interact with personalised offers across the Albertsons ecosystem.
 
@@ -6,7 +6,7 @@
 
 ## 1. Mobile App (Primary)
 
-The for U app is the main surface for SmartRewards offers.
+The for U app is the main surface for SmartOfferEngine offers.
 
 | Action | Description |
 |---|---|

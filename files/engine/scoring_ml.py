@@ -1,5 +1,5 @@
 """
-SmartRewards — XGBoost Propensity Scoring Engine (Split: Standard + GR)
+SmartOfferEngine — XGBoost Propensity Scoring Engine (Split: Standard + GR)
 
 Trains two separate XGBoost models:
   - Standard model: trained on standard offer clips/redemptions (19 features)

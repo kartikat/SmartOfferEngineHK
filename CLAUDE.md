@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**SmartRewards** — personalised loyalty offer ranking engine for Albertsons / Safeway *for U* program. Three scoring models run side by side: a rule-based engine, an XGBoost standard propensity model, and an XGBoost GR propensity model. Results served via FastAPI and an interactive Streamlit demo UI. All data in PostgreSQL mirroring the Albertsons C360 BigQuery schema.
+**SmartOfferEngine** — personalised loyalty offer ranking engine for Albertsons / Safeway *for U* program. Three scoring models run side by side: a rule-based engine, an XGBoost standard propensity model, and an XGBoost GR propensity model. Results served via FastAPI and an interactive Streamlit demo UI. All data in PostgreSQL mirroring the Albertsons C360 BigQuery schema.
 
 ## Setup & Run
 

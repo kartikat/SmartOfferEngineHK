@@ -1,5 +1,5 @@
 """
-SmartRewards — Split XGBoost Propensity Scoring Engine
+SmartOfferEngine — Split XGBoost Propensity Scoring Engine
 
 Trains TWO separate XGBoost models:
   1. propensity_standard  — for standard/fuel/points-multiplier offers

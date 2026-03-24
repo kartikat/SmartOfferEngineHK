@@ -1,4 +1,4 @@
-# SmartRewards — Propensity Models
+# SmartOfferEngine — Propensity Models
 
 > Two separate XGBoost models: one for standard offers, one for Grocery Reward offers.
 

@@ -1,5 +1,5 @@
 """
-SmartRewards — PostgreSQL Data Generator
+SmartOfferEngine — PostgreSQL Data Generator
 Seeds all 18 C360 tables in dependency order with:
   - Real Safeway product UPCs and offer data (Dairy category, extracted from Safeway API)
   - Synthetic correlated data for all other tables
@@ -1161,7 +1161,7 @@ def truncate_all(engine):
 # ─── MAIN ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print("🚀 SmartRewards Data Generator")
+    print("🚀 SmartOfferEngine Data Generator")
     print(f"   DB: {DB_URL}\n")
 
     truncate_all(engine)

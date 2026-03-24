@@ -1,4 +1,4 @@
-# SmartRewards — Project Phases
+# SmartOfferEngine — Project Phases
 
 > End-to-end delivery plan across 4 phases: data infrastructure, demo UI, polish, and ML upgrade.
 

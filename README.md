@@ -1,8 +1,8 @@
-# SmartRewards
+# SmartOfferEngine
 
 **AI-powered personalised loyalty offer engine for the Albertsons *for U* program.**
 
-SmartRewards scores every active offer against every loyalty household and returns a ranked list of the most relevant offers per customer. It mirrors the Albertsons C360 BigQuery data model locally in PostgreSQL and serves results via a FastAPI REST API and an interactive Streamlit demo UI.
+SmartOfferEngine scores every active offer against every loyalty household and returns a ranked list of the most relevant offers per customer. It mirrors the Albertsons C360 BigQuery data model locally in PostgreSQL and serves results via a FastAPI REST API and an interactive Streamlit demo UI.
 
 ---
 

@@ -1,4 +1,4 @@
-# SmartRewards — Architecture Diagrams
+# SmartOfferEngine — Architecture Diagrams
 
 ---
 

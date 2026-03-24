@@ -1,4 +1,4 @@
-# SmartRewards — Defects Log
+# SmartOfferEngine — Defects Log
 
 All bugs identified and fixed across sessions. Ordered by session, then severity.
 

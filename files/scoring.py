@@ -1,5 +1,5 @@
 """
-SmartRewards — Rule-Based Offer Scoring Engine
+SmartOfferEngine — Rule-Based Offer Scoring Engine
 Scores and ranks offers for each customer based on weighted rules.
 """
 

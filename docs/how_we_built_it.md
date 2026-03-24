@@ -1,6 +1,6 @@
-# How We Built SmartRewards
+# How We Built SmartOfferEngine
 
-> A record of the collaboration between Kartika and Claude Code across 3 sessions to build SmartRewards from scratch for the Albertsons hackathon.
+> A record of the collaboration between Kartika and Claude Code across 3 sessions to build SmartOfferEngine from scratch for the Albertsons hackathon.
 
 ---
 
@@ -171,7 +171,7 @@ Throughout the project, the collaboration followed a consistent pattern:
 
 The final demo tells two stories through the UI:
 
-**Story 1 — The Fuel Redeemer.** An offline-only loyalist who has never shopped online. SmartRewards surfaces J4U digital offers in their ranked list despite their offline preference — the eCommerce nudge at work. The idea: show them relevant online offers, let them discover eCommerce naturally.
+**Story 1 — The Fuel Redeemer.** An offline-only loyalist who has never shopped online. SmartOfferEngine surfaces J4U digital offers in their ranked list despite their offline preference — the eCommerce nudge at work. The idea: show them relevant online offers, let them discover eCommerce naturally.
 
 **Story 2 — The 4U+ Subscriber.** A premium tier member who sees exclusive offers unavailable to Standard customers. Their scores on J4U-exclusive offers are boosted 50% by the tier multiplier. The Compare Customers screen shows both stories side by side — same offer catalog, completely different ranked results.
 

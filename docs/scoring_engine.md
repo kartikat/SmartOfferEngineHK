@@ -1,4 +1,4 @@
-# Scoring Engine — SmartRewards
+# Scoring Engine — SmartOfferEngine
 
 > How every customer-offer pair is scored and ranked. Three models, two scoring paths.
 

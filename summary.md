@@ -1,4 +1,4 @@
-# SmartRewards — Complete Project Summary
+# SmartOfferEngine — Complete Project Summary
 
 **Project:** AI-powered personalised loyalty offer ranking engine for Albertsons / Safeway *for U* program
 **Stack:** Python · FastAPI · Streamlit · PostgreSQL 16 · XGBoost

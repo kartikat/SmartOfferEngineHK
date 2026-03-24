@@ -1,5 +1,5 @@
 """
-SmartRewards — REST API (PostgreSQL)
+SmartOfferEngine — REST API (PostgreSQL)
 Serves pre-scored personalised offers per customer from c360_scored_offers.
 
 Run:  uvicorn files.api.main:app --reload --port 8000
@@ -17,7 +17,7 @@ DB_URL = os.getenv("DATABASE_URL", "postgresql://localhost/smartrewards")
 engine = create_engine(DB_URL, pool_pre_ping=True)
 
 app = FastAPI(
-    title="SmartRewards API",
+    title="SmartOfferEngine API",
     description="Personalised offer recommendations for Albertsons loyalty customers",
     version="2.0.0",
 )
@@ -76,7 +76,7 @@ class CustomerProfile(BaseModel):
 
 @app.get("/", tags=["Health"])
 def root():
-    return {"service": "SmartRewards API", "version": "2.0.0", "docs": "/docs"}
+    return {"service": "SmartOfferEngine API", "version": "2.0.0", "docs": "/docs"}
 
 
 @app.get("/health", tags=["Health"])
