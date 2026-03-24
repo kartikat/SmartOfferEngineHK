@@ -120,6 +120,40 @@ st.markdown(f"""
         display: inline-block;
     }}
 
+    /* Ribbon — top row only, seamlessly connects to switcher row below */
+    .abs-header {{
+        border-radius: 10px 10px 0 0 !important;
+        margin-bottom: 0 !important;
+        padding-bottom: 12px !important;
+    }}
+
+    /* Customer switcher row — extends the ribbon downward */
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.abs-header)
+        + div[data-testid="stVerticalBlockBorderWrapper"] {{
+        background: {BLUE};
+        border-radius: 0 0 10px 10px;
+        padding: 0 32px 14px !important;
+        margin-bottom: 12px;
+    }}
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.abs-header)
+        + div[data-testid="stVerticalBlockBorderWrapper"] label {{
+        color: rgba(255,255,255,0.65) !important;
+        font-size: 0.72rem !important;
+        font-weight: 500 !important;
+    }}
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.abs-header)
+        + div[data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] {{
+        background: rgba(255,255,255,0.13) !important;
+        border-color: rgba(255,255,255,0.3) !important;
+        border-radius: 6px !important;
+    }}
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.abs-header)
+        + div[data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] div,
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.abs-header)
+        + div[data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] span {{
+        color: white !important;
+    }}
+
     /* Offer cards */
     .offer-card {{
         border: 1px solid #DDE4EE;
@@ -132,6 +166,27 @@ st.markdown(f"""
     .offer-rank {{ color: {RED}; font-weight: 800; font-size: 1.1rem; }}
     .offer-name {{ font-weight: 700; font-size: 1rem; color: #222; }}
     .offer-discount {{ color: {RED}; font-weight: 700; font-size: 1.1rem; }}
+
+    /* Primary buttons default to orange (Simulate, Sign In, etc.) */
+    div[data-testid="stButton"] > button[kind="primary"] {{
+        background-color: #EA580C !important;
+        border-color: #EA580C !important;
+        color: white !important;
+    }}
+    div[data-testid="stButton"] > button[kind="primary"]:hover {{
+        background-color: #C2410C !important;
+        border-color: #C2410C !important;
+    }}
+
+    /* Clip buttons inside offer grid columns → blue */
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button[kind="primary"] {{
+        background-color: {BLUE} !important;
+        border-color: {BLUE} !important;
+    }}
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button[kind="primary"]:hover {{
+        background-color: #003d75 !important;
+        border-color: #003d75 !important;
+    }}
 
     /* Channel pills */
     .pill-j4u       {{ background:#D6EAF8; color:#1A5276; padding:2px 10px; border-radius:12px; font-size:0.78rem; font-weight:600; }}
@@ -302,6 +357,15 @@ def load_customers() -> pd.DataFrame:
             cp.churn_segment_cd,
             cp.gas_rewards_ind_6m,
             cp.dairy_purchase_ind_6m,
+            cp.meat_purchase_ind_6m,
+            cp.produce_purchase_ind_6m,
+            cp.bakery_purchase_ind_6m,
+            cp.seafood_purchase_ind_6m,
+            cp.frozen_grocery_purchase_ind_6m,
+            cp.grocery_purchase_ind_6m,
+            cp.doordash_txn_ind_6m,
+            cp.instacart_txn_ind_6m,
+            cp.uber_txn_ind_6m,
             cp.email_opt_in,
             cp.mobile_app_download_flg,
             cp.customer_created_dt,
@@ -323,7 +387,10 @@ def load_customers() -> pd.DataFrame:
             cp.clv_tier_level_id, cp.current_point_balance, cp.points_expiring_next_month,
             cp.fav_channel, cp.eng_mode_p6m, cp.customer_age, cp.household_size,
             cp.num_of_children, cp.diet_preference, cp.churn_risk_score_nbr,
-            cp.churn_segment_cd, cp.gas_rewards_ind_6m, cp.dairy_purchase_ind_6m,
+            cp.churn_segment_cd, cp.gas_rewards_ind_6m,
+            cp.dairy_purchase_ind_6m, cp.meat_purchase_ind_6m, cp.produce_purchase_ind_6m,
+            cp.bakery_purchase_ind_6m, cp.seafood_purchase_ind_6m,
+            cp.frozen_grocery_purchase_ind_6m, cp.grocery_purchase_ind_6m,
             cp.email_opt_in, cp.mobile_app_download_flg, cp.customer_created_dt,
             cp.doordash_txn_ind_6m, cp.instacart_txn_ind_6m, cp.uber_txn_ind_6m,
             cp.auto_clip_ind
@@ -559,6 +626,69 @@ def channel_pill(channel: str) -> str:
     }
     css, label = mapping.get(channel, ("pill-other", channel))
     return f'<span class="{css}">{label}</span>'
+
+
+def customer_feature_tags(customer: dict) -> str:
+    """Return HTML chips summarising the customer's shopping profile."""
+    tags = []
+
+    def _chip(icon, label, bg, color):
+        return (
+            f'<span style="background:{bg}; color:{color}; font-size:0.75rem; font-weight:600;'
+            f' padding:3px 10px; border-radius:999px; white-space:nowrap;">{icon} {label}</span>'
+        )
+
+    # Loyalty tier
+    if customer.get("clv_tier_level_id") == "4U+":
+        tags.append(_chip("⭐", "for U+", "#FEF9C3", "#854D0E"))
+
+    # Frequent buyer
+    days = customer.get("days_since_last_txn") or 999
+    if days <= 7:
+        tags.append(_chip("🔁", "Frequent Buyer", "#DCFCE7", "#166534"))
+    elif days <= 30:
+        tags.append(_chip("🛒", "Regular Shopper", "#DCFCE7", "#166534"))
+
+    # Online / eCommerce
+    is_online = any(customer.get(k) for k in
+                    ["doordash_txn_ind_6m", "instacart_txn_ind_6m", "uber_txn_ind_6m"])
+    if is_online:
+        tags.append(_chip("📱", "Online / eCommerce", "#DBEAFE", "#1D4ED8"))
+
+    # Fuel
+    if customer.get("gas_rewards_ind_6m"):
+        tags.append(_chip("⛽", "Fuel Rewards", "#FEF3C7", "#92400E"))
+
+    # Department purchase indicators
+    dept_map = [
+        ("meat_purchase_ind_6m",          "🥩", "Meat Buyer"),
+        ("dairy_purchase_ind_6m",          "🥛", "Dairy Buyer"),
+        ("produce_purchase_ind_6m",        "🥦", "Produce Buyer"),
+        ("seafood_purchase_ind_6m",        "🐟", "Seafood Buyer"),
+        ("bakery_purchase_ind_6m",         "🍞", "Bakery Buyer"),
+        ("frozen_grocery_purchase_ind_6m", "🧊", "Frozen Buyer"),
+    ]
+    for field, icon, label in dept_map:
+        if customer.get(field):
+            tags.append(_chip(icon, label, "#F3F4F6", "#374151"))
+
+    # Family
+    if (customer.get("num_of_children") or 0) > 0:
+        tags.append(_chip("👨‍👩‍👧", "Family", "#FDF4FF", "#7E22CE"))
+
+    # Diet preference
+    diet = (customer.get("diet_preference") or "").strip()
+    if diet and diet.lower() not in ("none", ""):
+        tags.append(_chip("🌱", diet, "#ECFDF5", "#065F46"))
+
+    # Churn risk
+    if customer.get("churn_segment_cd") == "High Risk":
+        tags.append(_chip("⚠️", "Churn Risk", "#FEE2E2", "#991B1B"))
+
+    if not tags:
+        return ""
+    chips = " ".join(tags)
+    return f'<div style="display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 4px;">{chips}</div>'
 
 
 def tier_badge(tier: str) -> str:
@@ -816,26 +946,6 @@ def page_dashboard():
         </div>
         """)
 
-        # Customer switcher
-        all_options = customers_df.apply(
-            lambda r: (
-                r["household_id"],
-                f"{r['full_name']}  ({r['household_id']})  |  {r['clv_tier_level_id']}  |  {r['current_point_balance']:,} pts"
-            ), axis=1
-        ).tolist()
-        hid_to_label = {h: l for h, l in all_options}
-        current_idx = next((i for i, (h, _) in enumerate(all_options) if h == hid), 0)
-        selected_label = st.selectbox(
-            "Switch Customer",
-            options=[l for _, l in all_options],
-            index=current_idx,
-            label_visibility="collapsed"
-        )
-        selected_hid = next(h for h, l in all_options if l == selected_label)
-        if selected_hid != hid:
-            st.session_state.household_id = selected_hid
-            st.rerun()
-
         st.html(tier_badge_sidebar(customer["clv_tier_level_id"], customer["current_point_balance"]))
         clipped_count = len(get_clipped(hid))
         if clipped_count:
@@ -863,8 +973,8 @@ def page_dashboard():
         st.markdown("---")
 
         _customer_options = ["My Offers", "My Rewards", "My Clipped Offers", "My Profile"]
-        _analyst_options  = ["Problem Exploration", "Segment Explorer", "Compare Customers", "Compare Models",
-                             "Feature Weight Studio", "Feature Engineer", "How Offers Are Scored", "Demo Script"]
+        _analyst_only_options = ["Problem Exploration", "Segment Explorer", "Compare Customers", "Compare Models",
+                                 "Feature Weight Studio", "Feature Engineer", "How Offers Are Scored", "Demo Script"]
         _current_nav = st.session_state.get("nav_page", "My Offers")
 
         if st.session_state.persona == "customer":
@@ -873,10 +983,22 @@ def page_dashboard():
             nav  = st.radio("Navigate", _customer_options, index=_idx,
                             key="nav_customer", label_visibility="collapsed")
         else:
-            st.html('<p style="color:rgba(255,255,255,0.55); font-size:0.72rem; margin:0 0 6px 0; text-transform:uppercase; letter-spacing:0.05em;">Analyst View</p>')
-            _idx = _analyst_options.index(_current_nav) if _current_nav in _analyst_options else 0
-            nav  = st.radio("Navigate", _analyst_options, index=_idx,
-                            key="nav_analyst", label_visibility="collapsed")
+            def _set_nav_cust():
+                st.session_state.nav_page = st.session_state.nav_analyst_cust
+            def _set_nav_anal():
+                st.session_state.nav_page = st.session_state.nav_analyst_tools
+
+            st.html('<p style="color:rgba(255,255,255,0.55); font-size:0.72rem; margin:0 0 6px 0; text-transform:uppercase; letter-spacing:0.05em;">Customer View</p>')
+            _cust_idx = _customer_options.index(_current_nav) if _current_nav in _customer_options else 0
+            st.radio("Navigate customer", _customer_options,
+                     index=_cust_idx, key="nav_analyst_cust",
+                     label_visibility="collapsed", on_change=_set_nav_cust)
+            st.html('<p style="color:rgba(255,255,255,0.55); font-size:0.72rem; margin:8px 0 6px 0; text-transform:uppercase; letter-spacing:0.05em;">Analyst Tools</p>')
+            _anal_idx = _analyst_only_options.index(_current_nav) if _current_nav in _analyst_only_options else 0
+            st.radio("Navigate analyst", _analyst_only_options,
+                     index=_anal_idx, key="nav_analyst_tools",
+                     label_visibility="collapsed", on_change=_set_nav_anal)
+            nav = _current_nav
 
         # Keep nav_page in sync with manual sidebar selection (only when not in demo_mode)
         if not st.session_state.get("demo_mode", False):
@@ -918,6 +1040,27 @@ def page_dashboard():
         &nbsp;&nbsp;{persona_pill}
     </div>
     """)
+
+    # ── Customer switcher — visually inside the blue ribbon ───────────────────
+    _sw_options = customers_df.apply(
+        lambda r: (
+            r["household_id"],
+            f"{r['full_name']}  ({r['household_id']})  |  {r['clv_tier_level_id']}  |  {r['current_point_balance']:,} pts"
+        ), axis=1
+    ).tolist()
+    _sw_idx = next((i for i, (h, _) in enumerate(_sw_options) if h == hid), 0)
+    _, _sw_right = st.columns([1, 1])
+    with _sw_right:
+        _sw_label = st.selectbox(
+            "Viewing account",
+            options=[l for _, l in _sw_options],
+            index=_sw_idx,
+            key="main_customer_switcher",
+        )
+    _sw_hid = next(h for h, l in _sw_options if l == _sw_label)
+    if _sw_hid != hid:
+        st.session_state.household_id = _sw_hid
+        st.rerun()
 
     def _dispatch_page(nav):
         if nav == "My Profile":
@@ -1021,7 +1164,6 @@ def render_profile(customer: dict):
 
 
 def render_offers(customer: dict, hid: str):
-    st.subheader("My Personalised Offers")
 
     # ── Simulate Purchase CTA ────────────────────────────────────────────────
     sim_key_before = f"sim_before_{hid}"
@@ -1036,7 +1178,7 @@ def render_offers(customer: dict, hid: str):
     _pre_list = [(r["offer_dsc"], round(float(r["score"]), 1))
                  for _, r in _pre_offers.iterrows()]
 
-    if st.button(_SIM_LABEL, type="primary"):
+    if st.button(_SIM_LABEL, type="primary", key="simulate_purchase_btn"):
         st.session_state[sim_key_before] = _pre_list
         with st.spinner("Recording transaction · Updating affinity · Re-scoring…"):
             simulate_purchase(hid)
@@ -1137,7 +1279,7 @@ def render_offers(customer: dict, hid: str):
             ["All Channels", "J4U", "Weekly Ad", "Auto Clip"]
         )
     with col2:
-        top_n = st.slider("Number of Offers", min_value=1, max_value=10, value=5)
+        top_n = st.slider("Number of Offers", min_value=3, max_value=9, value=6, step=3)
     with col3:
         # Only show toggle for rule-based model
         if selected_model == "rule_based":
@@ -1162,132 +1304,132 @@ def render_offers(customer: dict, hid: str):
         st.info("No offers found for the selected filters.")
         return
 
-    st.markdown(f"Showing **{len(cust_offers)}** personalised offers for **{hid}**")
+    tags_html = customer_feature_tags(customer)
+    if tags_html:
+        st.html(tags_html)
     st.markdown("")
 
-    for i, (_, row) in enumerate(cust_offers.iterrows(), start=1):
-        offer_id   = row["client_offer_id"]
-        gr         = is_grocery_reward(row)
-        clipped    = is_clipped(hid, offer_id)
-        n_clipped  = clip_count(hid, offer_id)
+    # ── 3-column grid matching Albertsons for U design ────────────────────────
+    offers_list = list(cust_offers.iterrows())
+    for row_start in range(0, len(offers_list), 3):
+        batch = offers_list[row_start:row_start + 3]
+        grid_cols = st.columns(3, gap="medium")
 
-        boosts = []
-        if row["recency_boost_applied"]:
-            boosts.append("⚡ Recency Boost")
-        if row["tier_multiplier_applied"]:
-            boosts.append("★ for U+ Boost")
-        boost_html = "  &nbsp;".join(
-            [f'<span style="color:{RED}; font-size:0.8rem; font-weight:600;">{b}</span>' for b in boosts]
-        )
+        for col_idx, (_, row) in enumerate(batch):
+            with grid_cols[col_idx]:
+                offer_id  = row["client_offer_id"]
+                gr        = is_grocery_reward(row)
+                clipped   = is_clipped(hid, offer_id)
+                n_clipped = clip_count(hid, offer_id)
 
-        days_left = int(row["days_left"]) if row["days_left"] is not None else None
-        if days_left is not None and days_left <= 3:
-            expiry_html = f'<span style="background:#FEE2E2; color:#991B1B; font-size:0.75rem; font-weight:700; padding:2px 8px; border-radius:10px;">⏰ Expires in {days_left}d</span>'
-        elif days_left is not None and days_left <= 7:
-            expiry_html = f'<span style="background:#FEF3C7; color:#92400E; font-size:0.75rem; font-weight:600; padding:2px 8px; border-radius:10px;">Expires in {days_left}d</span>'
-        else:
-            expiry_html = ""
+                disc_label = format_discount(row["discount_value"], row["discount_type_cd"])
+                icon       = category_icon(row.get("category_nm", ""), size=76)
 
-        clipped_html = (
-            f'<span style="color:#1A7A5E; font-size:0.8rem; font-weight:700;">✂️ Clipped'
-            + (f' ×{n_clipped}' if n_clipped > 1 else '')
-            + ' — Active at checkout</span>'
-        ) if clipped else ""
+                days_left = int(row["days_left"]) if row["days_left"] is not None else None
+                if days_left is not None and days_left <= 3:
+                    expiry_line = f'<span style="color:#DC2626; font-weight:600;">Expires in {days_left}d</span>'
+                elif days_left is not None and days_left <= 7:
+                    expiry_line = f'<span style="color:#D97706;">Expires in {days_left}d</span>'
+                elif days_left is not None:
+                    expiry_line = f"Expires in {days_left}d"
+                else:
+                    expiry_line = "No expiry info"
 
-        icon       = category_icon(row.get("category_nm", ""))
-        disc_color = discount_color(row["discount_type_cd"])
-        disc_label = format_discount(row["discount_value"], row["discount_type_cd"])
-        border_style = "border-color:#1A7A5E; background:#F0FBF6;" if clipped else ""
+                border_color = "#16A34A" if clipped else "#DDE4EE"
+                bg_color     = "#F0FBF6" if clipped else "white"
 
-        card_col, btn_col = st.columns([5, 1])
-        with card_col:
-            st.html(f"""
-            <div class="offer-card" style="{border_style}">
-                <div style="display:flex; gap:14px; align-items:flex-start;">
+                boosts = []
+                if row.get("recency_boost_applied"):
+                    boosts.append("⚡")
+                if row.get("tier_multiplier_applied"):
+                    boosts.append("★")
+                boost_badge = (
+                    f'<span style="font-size:0.75rem; color:#92400E; margin-left:4px;">'
+                    + " ".join(boosts) + "</span>"
+                ) if boosts else ""
 
-                    <!-- Category icon block -->
-                    <div style="min-width:48px; height:48px; background:#F0F4FA; border-radius:12px;
-                                display:flex; align-items:center; justify-content:center;
-                                font-size:1.6rem; flex-shrink:0;">
-                        {icon}
+                clipped_bottom = (
+                    f'<span style="color:#16A34A; font-weight:700; font-size:0.88rem;">'
+                    f'✓ Clipped{"  ×" + str(n_clipped) if n_clipped > 1 else ""}</span>'
+                ) if clipped else ""
+
+                st.html(f"""
+                <div style="border:1.5px solid {border_color}; border-radius:12px;
+                            padding:15px 15px 12px; background:{bg_color};
+                            box-shadow:0 1px 6px rgba(0,0,0,0.07);
+                            display:flex; flex-direction:column; min-height:210px;">
+
+                    <!-- for U badge + discount value -->
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:11px;">
+                        <span style="background:#00529B; color:white; font-size:0.58rem;
+                                     font-weight:800; padding:2px 6px; border-radius:4px;
+                                     letter-spacing:0.03em; flex-shrink:0;">for U</span>
+                        <span style="color:#1a56db; font-weight:800; font-size:1.05rem; flex:1;">
+                            {disc_label}
+                        </span>
+                        {boost_badge}
                     </div>
 
-                    <!-- Main content -->
-                    <div style="flex:1; min-width:0;">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
-                            <div>
-                                <span class="offer-rank">#{i}</span>&nbsp;
-                                <span class="offer-name">{row['offer_dsc']}</span>
+                    <!-- Product info + category image -->
+                    <div style="display:flex; gap:10px; align-items:flex-start; flex:1;">
+                        <div style="flex:1; min-width:0;">
+                            <div style="font-weight:700; font-size:0.9rem; color:#111827;
+                                        margin-bottom:3px; line-height:1.35;
+                                        overflow:hidden; display:-webkit-box;
+                                        -webkit-line-clamp:2; -webkit-box-orient:vertical;">
+                                {row['offer_dsc']}
                             </div>
-                            <!-- Discount badge -->
-                            <div style="text-align:right; flex-shrink:0;">
-                                <span style="color:{disc_color}; font-weight:800; font-size:1.15rem;
-                                             white-space:nowrap;">{disc_label}</span>
+                            <div style="font-size:0.78rem; color:#6B7280; margin-bottom:8px;">
+                                {row.get('category_nm', '')}
                             </div>
+                            <span style="color:#1a56db; font-size:0.78rem; cursor:pointer;">
+                                Offer Details
+                            </span>
                         </div>
-
-                        <!-- Pills row -->
-                        <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
-                            {channel_pill(row['delivery_channel_cd'])}
-                            {('&nbsp;' + boost_html) if boost_html else ''}
-                            {expiry_html}
+                        <div style="flex-shrink:0; width:76px; height:76px; background:#F3F4F6;
+                                    border-radius:8px; display:flex; align-items:center;
+                                    justify-content:center; overflow:hidden;">
+                            {icon}
                         </div>
+                    </div>
 
-                        <!-- Score bar + meta -->
-                        <div style="margin-top:8px;">
-                            <div style="display:flex; justify-content:space-between;
-                                        font-size:0.75rem; color:#94A3B8; margin-bottom:3px;">
-                                <span>{row.get('category_nm','')}</span>
-                                <span>Score: <b style="color:#475569;">{row['score']:.0f}</b> / 100</span>
-                            </div>
-                            {score_bar(row['score'])}
+                    <!-- Divider -->
+                    <div style="border-top:1px solid #E5E7EB; margin:10px 0 8px;"></div>
+
+                    <!-- Clipped status + expiry -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; min-height:28px;">
+                        <div>{clipped_bottom}</div>
+                        <div style="text-align:right; font-size:0.7rem; color:#9CA3AF; line-height:1.5;">
+                            Unlimited use<br/>{expiry_line}
                         </div>
-
-                        {('<div style="margin-top:6px;">' + clipped_html + '</div>') if clipped_html else ''}
                     </div>
                 </div>
-            </div>
-            """)
+                """)
 
-        with btn_col:
-            st.markdown("<div style='margin-top:18px;'></div>", unsafe_allow_html=True)
-            if clipped:
-                if st.button("Unclip", key=f"unclip_{hid}_{offer_id}_{i}", width="stretch"):
-                    unclip_offer_local(hid, offer_id)
-                    st.rerun()
-            if gr or not clipped:
-                btn_label = "Clip ✂️" if not clipped else "Clip again ✂️"
-                if st.button(btn_label, key=f"clip_{hid}_{offer_id}_{i}", width="stretch", type="primary"):
-                    clip_offer_local(hid, offer_id, gr)
-                    st.rerun()
+                # Clip / Unclip actions below the card
+                if clipped:
+                    if st.button("Unclip", key=f"unclip_{hid}_{offer_id}", use_container_width=True):
+                        unclip_offer_local(hid, offer_id)
+                        st.rerun()
+                else:
+                    if st.button("Clip", key=f"clip_{hid}_{offer_id}", type="primary",
+                                 use_container_width=True):
+                        clip_offer_local(hid, offer_id, gr)
+                        st.rerun()
 
-        if show_scores:
-            with st.expander(f"📊 Score breakdown for this offer", expanded=False):
-                st.markdown("**How the rule-based engine scored this offer:**")
-                labels = {
-                    "transaction_affinity": ("Transaction Affinity", "30%", "Historical spend in this category"),
-                    "redemption_match":     ("Redemption Match",     "25%", "Channel alignment with your preference"),
-                    "points_eligibility":   ("Points Eligibility",   "20%", "You have enough points to benefit"),
-                    "cart_affinity":        ("Cart / Browse Affinity","15%", "Based on your online shopping activity"),
-                    "demographic_match":    ("Demographic Match",    "10%", "Profile fit for this offer type"),
-                }
-                col_a, col_b, col_c = st.columns([3, 1, 1.2])
-                with col_a:
-                    st.markdown("**Factor**")
-                with col_b:
-                    st.markdown("**Weight**")
-                with col_c:
-                    st.markdown("**Your Score**")
-                st.divider()
-                for key, (label, weight, desc) in labels.items():
-                    val = float(row[key])
-                    c1, c2, c3 = st.columns([3, 1, 1.2])
-                    with c1:
-                        st.caption(f"**{label}**  \n*{desc}*")
-                    with c2:
-                        st.markdown(f"`{weight}`")
-                    with c3:
-                        st.progress(val, text=f"{val:.1%}")
+                if show_scores:
+                    with st.expander("📊 Score breakdown", expanded=False):
+                        labels = {
+                            "transaction_affinity": ("Transaction Affinity", "30%"),
+                            "redemption_match":     ("Redemption Match",     "25%"),
+                            "points_eligibility":   ("Points Eligibility",   "20%"),
+                            "cart_affinity":        ("Cart / Browse",        "15%"),
+                            "demographic_match":    ("Demographic",          "10%"),
+                        }
+                        for key, (label, weight) in labels.items():
+                            val = float(row[key])
+                            st.caption(f"**{label}** ({weight})")
+                            st.progress(val, text=f"{val:.1%}")
 
     # ── Grocery Rewards teaser / Auto Clip status ─────────────────────────────
     balance = customer.get("current_point_balance", 0) or 0
@@ -2537,11 +2679,18 @@ def render_demo_panel():
         f'📍 {nav_page}</div>'
     ) if nav_page else ""
 
+    # Collapse button — top right, before the panel
+    _, hide_col = st.columns([5.5, 0.5])
+    with hide_col:
+        if st.button("◀", help="Collapse presenter panel", use_container_width=True, key="hide_panel"):
+            st.session_state.demo_panel_open = False
+            st.rerun()
+
     st.html(f"""
     <div style="background:linear-gradient(160deg,#00529B,#003870); border-radius:14px;
                 padding:12px 16px 18px 16px; color:white; font-family:sans-serif; min-height:600px;
-                display:flex; flex-direction:column; gap:4px;">
-        
+                display:flex; flex-direction:column; gap:4px; margin-top:-4px;">
+
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
             <span style="background:#E31837; color:white; font-size:0.68rem; font-weight:700;
                          padding:3px 8px; border-radius:99px; letter-spacing:0.06em;">
@@ -2611,14 +2760,6 @@ def render_demo_panel():
 
     </div>
     """)
-
-    # Hide button positioned on top of the blue panel with negative margin
-    st.markdown('<div style="margin-top: -48px; margin-bottom: 4px;"></div>', unsafe_allow_html=True)
-    _, hide_col = st.columns([5.5, 0.5])
-    with hide_col:
-        if st.button("◀", help="Collapse presenter panel", use_container_width=True, key="hide_panel"):
-            st.session_state.demo_panel_open = False
-            st.rerun()
 
     # Prev / Next buttons
     st.markdown("")
@@ -2899,15 +3040,9 @@ def render_demo_script():
         """)
 
         # Architecture diagram
-        arch_path = os.path.join(os.path.dirname(__file__), "..", "docs", "images", "01_system_overview.png")
+        arch_path = os.path.join(os.path.dirname(__file__), "..", "docs", "images", "exec_architecture.png")
         if os.path.exists(arch_path):
             st.markdown("")
-            st.html("""
-            <div style="font-size:0.8rem; font-weight:600; color:#6B7280;
-                        text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px;">
-                System Architecture
-            </div>
-            """)
             st.image(arch_path, use_container_width=True)
 
 
