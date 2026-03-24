@@ -11,6 +11,51 @@
 
 ---
 
+## Session 15 — 2026-03-23
+
+### What was done
+
+#### 1. Presentation UI Polish — text sizing and spacing
+
+- **Enlarged demo slide images**: Increased proportional height from 400px to 500px for App View (prod_screenshot.png) and Web View (webView.jpg) — both maintain aspect ratio, now more visually prominent
+- **Fixed text truncation in presenter panel**: 
+  - Removed 300-char limit on narration; now displays full text
+  - Added CSS word-wrap properties (`word-wrap:break-word; overflow-wrap:break-word`) to title and narration divs
+  - Increased panel height from 420px to 600px to accommodate full content
+- **Problem Exploration page condensed**: Reduced point bullet verbosity by 30–40% while preserving all content meaning (e.g., "Opens the app and sees 527 offers — no guidance" → "Sees 527 offers with no guidance"; "no signal the for U+ tier is giving them anything extra" → "for U+ tier doesn't feel like added value")
+
+#### 2. Top-of-page whitespace reduction
+
+- Added aggressive CSS rules to remove Streamlit default padding/margin:
+  - `.main { margin-top: -40px; }`
+  - `section[data-testid="stMain"] { margin-top: -50px; }`
+  - `[data-testid="stAppViewContainer"] { margin-top: -40px; }`
+  - `[data-testid="stVerticalBlockBorderWrapper"]:first-of-type { margin-top: -50px; }`
+- Reduced header bottom margin from 24px to 12px
+- Added negative margins to subheaders (h2: -4px) and metric containers (-8px)
+- Pre-header container with -50px margin splice in before blue presenter ribbon
+- Result: ~50% reduction in white space above main content
+
+#### 3. Hide button repositioning
+
+- Moved Hide button to top-right of presenter panel using `margin-top: -48px` negative margin
+- Button now appears overlaid on the blue ribbon at top-right, not below it
+- Maintains full collapse functionality (sets `demo_panel_open = False`, reruns to show expand arrow)
+
+### Known Issues
+
+- CSS negative margins are aggressive; may cause overlap on very small screens (< 720px width)
+- Browser cache may need hard refresh (Ctrl+Shift+R) to see whitespace reductions
+
+### Testing Done
+
+- ✅ All 59 unit tests passing
+- ✅ Python syntax validated via `py_compile`
+- ✅ Presentation mode navigation confirmed working
+- ✅ Dual-image display rendering at matched heights
+
+---
+
 ## Session 14 — 2026-03-20
 
 ### What was done

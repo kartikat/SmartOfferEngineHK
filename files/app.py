@@ -62,20 +62,30 @@ LIGHT = "#F0F4FA"
 
 st.markdown(f"""
 <style>
-    /* Global */
-    html, body, [class*="css"] {{ font-family: 'Segoe UI', sans-serif; }}
-    .main {{ background-color: #FFFFFF; }}
+    /* Aggressive global top removal */
+    * {{ margin: 0; padding: 0; }}
+    html, body {{ margin: 0; padding: 0; }}
+    .main {{ background-color: #FFFFFF; padding-top: 0 !important; margin-top: -40px !important; }}
+    [data-testid="stAppViewContainer"] {{ padding-top: 0 !important; margin-top: -40px !important; }}
+    [data-testid="stVerticalBlockBorderWrapper"]:first-of-type {{ margin-top: -50px !important; }}
+    [data-testid="stVerticalBlockBorderWrapper"] {{ margin-top: -10px !important; }}
+    [data-testid="stApp"] {{ margin-top: 0; padding-top: 0; }}
+    .stApp {{ margin-top: 0; padding-top: 0; }}
+    section[data-testid="stMain"] {{ padding-top: 0 !important; margin-top: -50px !important; }}
+    div[class*="viewerMainContainer"] {{ margin-top: 0; padding-top: 0; }}
 
     /* Header bar */
     .abs-header {{
         background: {BLUE};
         padding: 18px 32px;
         border-radius: 10px;
-        margin-bottom: 24px;
+        margin-bottom: 12px;
         display: flex;
         align-items: center;
         justify-content: space-between;
     }}
+    h2 {{ margin-top: -4px !important; }}
+    [data-testid="stMetricContainer"] {{ margin-top: -8px; }}
     .abs-header h1 {{ color: white; margin: 0; font-size: 1.6rem; }}
     .abs-header span {{ color: #A8C8F0; font-size: 0.9rem; }}
 
@@ -132,16 +142,6 @@ st.markdown(f"""
     /* Score bar */
     .score-bar-bg {{ background:#EEF2F7; border-radius:6px; height:10px; margin-top:6px; }}
     .score-bar-fill {{ height:10px; border-radius:6px; background: linear-gradient(90deg, {BLUE}, {RED}); }}
-
-    /* Segment cards */
-    .seg-card {{
-        background: {LIGHT};
-        border-radius: 10px;
-        padding: 20px;
-        text-align: center;
-    }}
-    .seg-number {{ font-size: 2.2rem; font-weight: 800; color: {BLUE}; }}
-    .seg-label  {{ color: #555; font-size: 0.9rem; }}
 
     /* Login */
     .login-box {{
@@ -754,7 +754,7 @@ def page_login():
     with mid:
         st.html(f"""
         <div style="background:white; border-radius:20px; padding:44px 40px 36px 40px;
-                    box-shadow:0 8px 40px rgba(0,82,155,0.13); text-align:center; margin-top:32px;">
+                    box-shadow:0 8px 40px rgba(0,82,155,0.13); text-align:center; margin-top:8px;">
             <img src="data:image/png;base64,{ICON_B64}" width="60"
                  style="margin-bottom:20px; display:block; margin-left:auto; margin-right:auto;"/>
             <div style="font-size:1.35rem; font-weight:800; color:#00529B; margin-bottom:4px;">
@@ -799,10 +799,6 @@ def page_login():
             '<p style="text-align:center; color:#9CA3AF; font-size:0.78rem;">No password required — hackathon demo</p>',
             unsafe_allow_html=True
         )
-        st.html("""<div style="height:12px;"></div>""")
-        if st.button("Explore Customer Segments", use_container_width=True):
-            st.session_state.page = "segments"
-            st.rerun()
 
 
 # ─── PAGE: DASHBOARD ──────────────────────────────────────────────────────────
@@ -882,8 +878,9 @@ def page_dashboard():
             nav  = st.radio("Navigate", _analyst_options, index=_idx,
                             key="nav_analyst", label_visibility="collapsed")
 
-        # Keep nav_page in sync with manual sidebar selection
-        st.session_state.nav_page = nav
+        # Keep nav_page in sync with manual sidebar selection (only when not in demo_mode)
+        if not st.session_state.get("demo_mode", False):
+            st.session_state.nav_page = nav
 
         st.markdown("---")
 
@@ -913,8 +910,9 @@ def page_dashboard():
     else:
         persona_pill = '<span style="background:#EDE9FE; color:#6D28D9; font-size:0.75rem; font-weight:600; padding:3px 10px; border-radius:999px;">📊 Analyst View</span>'
 
+    st.html("""<div style="margin-top: -50px;"></div>""")
     st.html(f"""
-    <div class="abs-header">
+    <div class="abs-header" style="margin-top: 0;">
         <img src="data:image/png;base64,{ICON_B64}" height="40" style="filter: brightness(0) invert(1);"/>
         <span style="color:#A8C8F0; font-size:0.9rem;">Personalised Offers Engine &nbsp;|&nbsp; <i>for U</i> Loyalty Program</span>
         &nbsp;&nbsp;{persona_pill}
@@ -949,12 +947,13 @@ def page_dashboard():
 
     if st.session_state.get("demo_mode", False):
         panel_open = st.session_state.get("demo_panel_open", True)
+        demo_nav = st.session_state.get("nav_page", "Problem Exploration")
         if panel_open:
             main_col, panel_col = st.columns([1, 1], gap="medium")
             with panel_col:
                 render_demo_panel()
             with main_col:
-                _dispatch_page(nav)
+                _dispatch_page(demo_nav)
         else:
             # Panel collapsed — full width content + small expand button top-right
             _, btn_col = st.columns([11, 1])
@@ -962,7 +961,7 @@ def page_dashboard():
                 if st.button("▶", help="Show presenter panel", use_container_width=True):
                     st.session_state.demo_panel_open = True
                     st.rerun()
-            _dispatch_page(nav)
+            _dispatch_page(demo_nav)
     else:
         _dispatch_page(nav)
 
@@ -2355,8 +2354,27 @@ def render_allocation_criteria():
 
 DEMO_STEPS = [
     {
-        "tag": "Step 1 of 5",
-        "title": "Today — 500+ Offers, No Personalisation",
+        "tag": "Step 1 of 7",
+        "title": "The Problem Landscape",
+        "narration": (
+            "Every Albertsons customer faces similar friction: 500+ offers with minimal personalization. "
+            "Loyal Produce shoppers see Bakery promos. for U+ members feel no tier advantage. "
+            "Points expire unnoticed. The business uses scripts to rank the offers every week/month. There is no centralized Engine that learns based on customer redemption pattern. "
+            "But the data to solve this already exists in C360. We're about to show you how to use it."
+        ),
+        "talking_points": [
+            "Customer pain: 500+ offers, no relevance signal, expiring points unnoticed, tier feels invisible",
+            "Business pain: ~30% points breakage liability, manual weekly ranking, no redemption insight",
+            "Solution: Use existing C360 data — transaction history, affinity, points, churn — to rank offers per household",
+        ],
+        "customer": None,
+        "highlight": "before",
+        "nav_page": "Problem Exploration",
+        "persona": "both",
+    },
+    {
+        "tag": "Step 2 of 7",
+        "title": "Today — 500+ Offers, Some Personalization",
         "narration": (
             "This is what every Albertsons customer sees today. "
             "The same catalog — with a ranking the business curates manually. "
@@ -2365,7 +2383,7 @@ DEMO_STEPS = [
         ),
         "talking_points": [
             "527 offers clipped — customers are overwhelmed, not guided",
-            "Ranking today is manually curated by the business — same order for every household",
+            "Ranking is curated by the business using scripts - Simple personalization of ordering offers.",
             "C360 already has transaction history, category affinity, points balance — unused for ranking",
         ],
         "customer": None,
@@ -2374,7 +2392,7 @@ DEMO_STEPS = [
         "persona": "business",
     },
     {
-        "tag": "Step 2 of 5",
+        "tag": "Step 3 of 7",
         "title": "The Problem — And Why C360 Already Has the Answer",
         "narration": (
             "Today, every Albertsons customer gets the same weekly offer email — "
@@ -2394,7 +2412,7 @@ DEMO_STEPS = [
         "persona": "business",
     },
     {
-        "tag": "Step 3 of 5",
+        "tag": "Step 4 of 7",
         "title": "Same Catalog. Completely Different Rankings.",
         "narration": (
             "Here's personalisation in action. Two households, same 64-offer catalog — "
@@ -2415,7 +2433,7 @@ DEMO_STEPS = [
         "persona": "business",
     },
     {
-        "tag": "Step 4 of 5",
+        "tag": "Step 5 of 7",
         "title": "The AI Layer — What the Rules Miss",
         "narration": (
             "On top of the rule-based engine, we trained an XGBoost model on C360 redemption history. "
@@ -2435,7 +2453,7 @@ DEMO_STEPS = [
         "persona": "business",
     },
     {
-        "tag": "Step 5 of 5",
+        "tag": "Step 6 of 7",
         "title": "What This Unlocks for Albertsons",
         "narration": (
             "SmartOfferEngine adds one new table to C360 — c360_scored_offers. "
@@ -2451,6 +2469,26 @@ DEMO_STEPS = [
         ],
         "customer": None,
         "highlight": "so_what",
+        "nav_page": "Demo Script",
+        "persona": "business",
+    },
+    {
+        "tag": "Step 7 of 7",
+        "title": "The Roadmap — What's Next",
+        "narration": (
+            "Phase 4 will upgrade the ML models with production C360 data and real redemption signals. "
+            "We'll move from synthetic to real customer behavior to train on actual patterns. "
+            "Real-time scoring will enable offers to update as customer points balance and preferences shift. "
+            "Finally, automated A/B testing will measure which algorithm variant drives the most redemption lift. "
+            "The foundation is ready. The next phase scales it to production volume and validates ROI at Albertsons scale."
+        ),
+        "talking_points": [
+            "Phase 4: Retrain on production C360 data — CV AUC currently 0.626 will improve significantly",
+            "Real-time scoring — offers refresh hourly as customer signals change (points balance, recency)",
+            "A/B test rule-based vs propensity models — measure actual redemption and ROI lift with real traffic",
+        ],
+        "customer": None,
+        "highlight": "roadmap",
         "nav_page": "Demo Script",
         "persona": "business",
     },
@@ -2478,13 +2516,6 @@ def render_demo_panel():
     step     = DEMO_STEPS[step_idx]
     total    = len(DEMO_STEPS)
 
-    # Collapse button — right-aligned
-    _, collapse_col = st.columns([5, 1])
-    with collapse_col:
-        if st.button("◀ Hide", help="Collapse presenter panel", use_container_width=True):
-            st.session_state.demo_panel_open = False
-            st.rerun()
-
     # Step dots
     dots = "".join(
         f'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;'
@@ -2508,10 +2539,10 @@ def render_demo_panel():
 
     st.html(f"""
     <div style="background:linear-gradient(160deg,#00529B,#003870); border-radius:14px;
-                padding:18px 16px; color:white; font-family:sans-serif; min-height:420px;
-                display:flex; flex-direction:column; gap:6px;">
-
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                padding:12px 16px 18px 16px; color:white; font-family:sans-serif; min-height:600px;
+                display:flex; flex-direction:column; gap:4px;">
+        
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
             <span style="background:#E31837; color:white; font-size:0.68rem; font-weight:700;
                          padding:3px 8px; border-radius:99px; letter-spacing:0.06em;">
                 🎬 PRESENTING
@@ -2528,13 +2559,15 @@ def render_demo_panel():
             {step.get("tag", "")}
         </div>
 
-        <div style="font-size:1.0rem; font-weight:700; line-height:1.3; margin-bottom:4px;">
+        <div style="font-size:1.0rem; font-weight:700; line-height:1.3; margin-bottom:4px;
+                    word-wrap:break-word; overflow-wrap:break-word;">
             {step["title"]}
         </div>
 
         <div style="font-size:0.82rem; color:rgba(255,255,255,0.8); line-height:1.55;
-                    border-left:3px solid rgba(255,255,255,0.2); padding-left:10px; margin-bottom:6px;">
-            {step["narration"][:220]}{"…" if len(step["narration"]) > 220 else ""}
+                    border-left:3px solid rgba(255,255,255,0.2); padding-left:10px; margin-bottom:6px;
+                    word-wrap:break-word; overflow-wrap:break-word;">
+            {step["narration"]}
         </div>
 
         <ul style="font-size:0.80rem; color:rgba(255,255,255,0.9); padding-left:16px;
@@ -2578,6 +2611,14 @@ def render_demo_panel():
 
     </div>
     """)
+
+    # Hide button positioned on top of the blue panel with negative margin
+    st.markdown('<div style="margin-top: -48px; margin-bottom: 4px;"></div>', unsafe_allow_html=True)
+    _, hide_col = st.columns([5.5, 0.5])
+    with hide_col:
+        if st.button("◀", help="Collapse presenter panel", use_container_width=True, key="hide_panel"):
+            st.session_state.demo_panel_open = False
+            st.rerun()
 
     # Prev / Next buttons
     st.markdown("")
@@ -2693,27 +2734,51 @@ def render_demo_script():
     # ── Highlight renderers ─────────────────────────────────────────────────
     if highlight == "before":
         screenshot_path = os.path.join(os.path.dirname(__file__), "assets", "prod_screenshot.png")
-        if os.path.exists(screenshot_path):
-            st.html("""
-            <div style="background:#FEF2F2; border:2px solid #FECACA; border-radius:10px;
-                        padding:10px 16px; margin-bottom:12px; display:flex; align-items:center; gap:10px;">
-                <span style="font-size:1.3rem;">⚠️</span>
-                <span style="font-weight:600; color:#991B1B; font-size:0.92rem;">
-                    Current State — Albertsons for U Production Today
-                </span>
-            </div>
-            """)
-            img = Image.open(screenshot_path)
-            col_l, col_c, col_r = st.columns([1, 2, 1])
-            with col_c:
-                st.image(img, use_container_width=True)
-            st.html("""
-            <div style="text-align:center; color:#9CA3AF; font-size:0.78rem; margin-top:4px;">
-                527 offers clipped · Same list for every customer · Manually ranked, not personalised
-            </div>
-            """)
-        else:
-            st.warning("Screenshot not found at files/assets/prod_screenshot.png")
+        webview_path = os.path.join(os.path.dirname(__file__), "assets", "webView.jpg")
+        
+        st.html("""
+        <div style="background:#FEF2F2; border:2px solid #FECACA; border-radius:10px;
+                    padding:10px 16px; margin-bottom:12px; display:flex; align-items:center; gap:10px;">
+            <span style="font-size:1.3rem;">⚠️</span>
+            <span style="font-weight:600; color:#991B1B; font-size:0.92rem;">
+                Current State — Albertsons for U Today (App & Web)
+            </span>
+        </div>
+        """)
+        
+        col_app, col_web = st.columns(2, gap="medium")
+        
+        with col_app:
+            st.subheader("📱 App View", divider=False)
+            if os.path.exists(screenshot_path):
+                img_app = Image.open(screenshot_path)
+                # Resize to target height of 500px while maintaining aspect ratio
+                target_height = 500
+                ratio = target_height / img_app.height
+                new_width = int(img_app.width * ratio)
+                img_app_resized = img_app.resize((new_width, target_height), Image.Resampling.LANCZOS)
+                st.image(img_app_resized, width=new_width)
+            else:
+                st.warning("App screenshot not found")
+        
+        with col_web:
+            st.subheader("🖥️ Web View", divider=False)
+            if os.path.exists(webview_path):
+                img_web = Image.open(webview_path)
+                # Resize to same target height of 500px to match app view
+                target_height = 500
+                ratio = target_height / img_web.height
+                new_width = int(img_web.width * ratio)
+                img_web_resized = img_web.resize((new_width, target_height), Image.Resampling.LANCZOS)
+                st.image(img_web_resized, width=new_width)
+            else:
+                st.warning("Web view image not found at files/assets/webView.jpg")
+        
+        st.html("""
+        <div style="text-align:center; color:#9CA3AF; font-size:0.78rem; margin-top:8px;">
+            500+ offers in both views · Same list for every customer · Scripted ranking, not centralized
+        </div>
+        """)
 
     elif highlight == "criteria":
         render_allocation_criteria()
@@ -2871,21 +2936,21 @@ def render_problem_exploration():
 
             <div style="font-size:0.78rem; font-weight:700; color:#1D4ED8; text-transform:uppercase;
                         letter-spacing:0.05em; margin-bottom:10px;">Pain Points Today</div>
-            <ul style="font-size:0.88rem; color:#1E3A5F; line-height:1.7; padding-left:18px; margin:0 0 18px 0;">
-                <li>Opens the app and sees <b>527 offers</b> — no guidance on which ones are relevant</li>
-                <li>Gets the same Bakery promo as everyone else, despite never buying Bakery</li>
-                <li>Has <b>2,800 points expiring in 7 days</b> — doesn't know they qualify for a $10 Meat reward</li>
-                <li>Clips 3–4 offers, ignores the rest — <b>not because they don't want deals, but because the list feels irrelevant</b></li>
-                <li>No signal that the for U+ tier is giving them anything extra</li>
+            <ul style="font-size:0.88rem; color:#1E3A5F; line-height:1.6; padding-left:18px; margin:0 0 14px 0;">
+                <li>Sees 527 offers with no guidance on what's relevant</li>
+                <li>Receives same generic offers as everyone else</li>
+                <li>2,800 points expiring soon — unaware of eligible rewards</li>
+                <li>Clips only 3–4 offers; the list feels irrelevant</li>
+                <li>for U+ tier doesn't feel like added value</li>
             </ul>
 
             <div style="font-size:0.78rem; font-weight:700; color:#1D4ED8; text-transform:uppercase;
                         letter-spacing:0.05em; margin-bottom:10px;">What They Need</div>
-            <ul style="font-size:0.88rem; color:#1E3A5F; line-height:1.7; padding-left:18px; margin:0;">
-                <li>A short, ranked list of offers that match <i>their</i> shopping habits</li>
-                <li>A nudge when their points are about to expire — surfacing the right reward at the right time</li>
-                <li>Exclusive offers that make the for U+ tier feel worthwhile</li>
-                <li>Confidence that the app knows them — and surfaces offers they'll actually use</li>
+            <ul style="font-size:0.88rem; color:#1E3A5F; line-height:1.6; padding-left:18px; margin:0;">
+                <li>Ranked offers matching their shopping habits</li>
+                <li>Timely alerts for expiring points with relevant rewards</li>
+                <li>Exclusive for U+ offers</li>
+                <li>Personalized recommendations they'll actually use</li>
             </ul>
         </div>
         """)
@@ -2906,21 +2971,21 @@ def render_problem_exploration():
 
             <div style="font-size:0.78rem; font-weight:700; color:#6D28D9; text-transform:uppercase;
                         letter-spacing:0.05em; margin-bottom:10px;">Pain Points Today</div>
-            <ul style="font-size:0.88rem; color:#2E1065; line-height:1.7; padding-left:18px; margin:0 0 18px 0;">
-                <li>Manually ranks 64 offers every week — takes hours, still feels like guessing</li>
-                <li>No signal on <i>why</i> customers don't redeem — wrong offer? Wrong timing? Wrong channel?</li>
-                <li><b>~30% of loyalty points expire unused</b> — a real liability on the balance sheet</li>
-                <li>Lapsed customers receive the same win-back campaign as loyal weekly shoppers</li>
-                <li>C360 has rich data on every household — <b>none of it is being used to rank offers</b></li>
+            <ul style="font-size:0.88rem; color:#2E1065; line-height:1.6; padding-left:18px; margin:0 0 14px 0;">
+                <li>Scripts rank offers monthly; no centralized engine</li>
+                <li>No insight into why customers don't redeem</li>
+                <li>30% of loyalty points expire unused</li>
+                <li>No segment-based campaigns or personalization</li>
+                <li>C360 data underutilized for ranking</li>
             </ul>
 
             <div style="font-size:0.78rem; font-weight:700; color:#6D28D9; text-transform:uppercase;
                         letter-spacing:0.05em; margin-bottom:10px;">What They Need</div>
-            <ul style="font-size:0.88rem; color:#2E1065; line-height:1.7; padding-left:18px; margin:0;">
-                <li>Automated, personalised ranking so the team focuses on strategy — not manual curation</li>
-                <li>Segment-level insight: which customers are churning, which have expiring points, which are ready to upgrade</li>
-                <li>A feedback loop — redemption data flowing back to improve the next ranking run</li>
-                <li>One shared output table that marketing, analytics, and the app all read from</li>
+            <ul style="font-size:0.88rem; color:#2E1065; line-height:1.6; padding-left:18px; margin:0;">
+                <li>Automated ranking to focus on strategy, not curation</li>
+                <li>Segment insights: churn, expiring points, upgrade-ready</li>
+                <li>Feedback loop from redemption data</li>
+                <li>One centralized output table for all teams</li>
             </ul>
         </div>
         """)
@@ -2933,15 +2998,12 @@ def render_problem_exploration():
         <div style="font-size:1.05rem; font-weight:800; margin-bottom:8px;">
             The Gap — and Why It Exists
         </div>
-        <div style="font-size:0.88rem; color:rgba(255,255,255,0.85); line-height:1.7; max-width:700px; margin:0 auto;">
-            Albertsons C360 already holds transaction history, category affinity, points balances,
-            churn scores, and channel preferences for every household.
-            The data to personalise offers at scale exists — it just isn't being used to rank them.
+        <div style="font-size:0.88rem; color:rgba(255,255,255,0.85); line-height:1.6; max-width:700px; margin:0 auto;">
+            C360 already holds transaction history, category affinity, points balances, churn scores, and channel preferences for every household.
+            The data exists — it just isn't being used to rank offers.
             <br/><br/>
-            <b>SmartOfferEngine adds one new table to C360: <code style="background:rgba(255,255,255,0.15);
-            padding:2px 6px; border-radius:4px;">c360_scored_offers</code></b> —
-            a ranked, personalised offer list per household, rebuilt nightly,
-            solving both personas' problems with the same pipeline.
+            <b>SmartOfferEngine adds <code style="background:rgba(255,255,255,0.15); padding:2px 6px; border-radius:4px;">c360_scored_offers</code></b> —
+            a nightly-rebuilt, personalized offer ranking per household that solves both problems with one pipeline.
         </div>
     </div>
     """)
