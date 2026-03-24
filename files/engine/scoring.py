@@ -213,7 +213,7 @@ def score_cart_affinity(customer: dict, offer: dict) -> float:
 def score_demographic_match(customer: dict, offer: dict) -> float:
     """Life-stage fit heuristics."""
     score = 0.5
-    category = offer.get("offer_category", "")
+    category = offer.get("offer_category") or ""
     age = customer.get("customer_age", "")
     n_children = customer.get("num_of_children", 0) or 0
 
