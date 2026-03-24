@@ -165,6 +165,35 @@ streamlit run files/app.py --server.headless true
 
 ---
 
+## Demo: Best Customers for Propensity Model Story
+
+Use these two customers on the **Compare Models** page to show where the AI diverges from rule-based.
+
+### Jessica Miller — HH00077 (PRIMARY — use this one first)
+**Standard · 1,222 pts · Vegan · Produce+Bakery buyer · Instacart+DoorDash+Fuel · Family of 6**
+
+| Offer | Rule Rank | AI Rank | Delta |
+|---|---|---|---|
+| Save $1 on Dave's Killer Bread | **#1** | #9 | ▼ 8 |
+| 20% off Fresh Berries | #4 | #8 | ▼ 4 |
+| $1 off any Fresh Vegetable Purchase | #5 | **#3** | ▲ 2 |
+
+**Pitch line:** "The rule-based engine gives her a bread offer at #1. The AI knows she's Vegan and a produce buyer — it leads with Fresh Vegetables. The rule is blind to diet preference; the ML model learned it from her purchase history."
+
+---
+
+### Stephanie White — HH00112 (SECONDARY — use for churn angle)
+**Standard · 348 pts · High Churn Risk · Organic diet · Instacart user · Produce+Bakery buyer**
+
+| Offer | Rule Rank | AI Rank | Delta |
+|---|---|---|---|
+| Save $2 on Coca-Cola 12 Pack | **#1** | #10 | ▼ 9 |
+| $2 off Beef Sirloin per lb | #9 | **#2** | ▲ 7 |
+
+**Pitch line:** "Rule gives Coca-Cola the top spot — high redemption rate, good channel match. But Stephanie is Organic and shops Instacart. The AI deprioritises Coca-Cola entirely and surfaces Beef Sirloin, catching a high-discount offer that actually fits her profile."
+
+---
+
 ## Key Decisions
 
 | Decision | Rationale |

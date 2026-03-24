@@ -1598,79 +1598,106 @@ def render_rewards(customer: dict, hid: str):
     st.caption(f"**{len(gr_df)} rewards available** — ranked by your {model_label}. Highest value for you shown first.")
     st.markdown("")
 
-    for idx, (_, row) in enumerate(gr_df.iterrows(), start=1):
-        tier        = int(row["pts_threshold"])
-        disc_type   = row["discount_type_cd"]
-        days_left   = int(row["days_left"]) if row["days_left"] is not None else None
-        score       = float(row["score"])
-        icon        = category_icon(row.get("category", ""))
+    gr_list = list(gr_df.iterrows())
+    for row_start in range(0, len(gr_list), 3):
+        batch = gr_list[row_start:row_start + 3]
+        grid_cols = st.columns(3, gap="medium")
+        for col_idx, (_, row) in enumerate(batch):
+            tier      = int(row["pts_threshold"])
+            disc_type = row["discount_type_cd"]
+            days_left = int(row["days_left"]) if row["days_left"] is not None else None
+            offer_id  = row["client_offer_id"]
+            disc_label = format_discount(row["discount_value"], disc_type)
+            clipped   = offer_id in get_clipped(hid)
 
-        disc_color  = discount_color(disc_type)
-        disc_label  = format_discount(row["discount_value"], disc_type)
+            # Category image (same logic as My Offers)
+            cat_nm = row.get("category", "") or ""
+            cat_img = CATEGORY_IMG_B64.get(cat_nm, "")
+            if cat_img:
+                icon = f'<img src="data:image/jpeg;base64,{cat_img}" width="76" height="76" style="object-fit:cover; border-radius:6px;"/>'
+            else:
+                icon = f'<span style="font-size:2rem;">{category_icon(cat_nm)}</span>'
 
-        # Expiry pill
-        if days_left is not None and days_left <= 3:
-            expiry_html = f'<span style="background:#FEE2E2; color:#991B1B; font-size:0.75rem; font-weight:700; padding:2px 8px; border-radius:10px;">⏰ Expires in {days_left}d</span>'
-        elif days_left is not None and days_left <= 7:
-            expiry_html = f'<span style="background:#FEF3C7; color:#92400E; font-size:0.75rem; font-weight:600; padding:2px 8px; border-radius:10px;">Expires in {days_left}d</span>'
-        else:
-            expiry_html = ""
+            # Expiry line
+            if days_left is not None and days_left <= 3:
+                expiry_line = f'<span style="color:#DC2626; font-weight:700;">Expires {days_left}d</span>'
+                border_color = "#FCA5A5"
+                bg_color = "#FFF5F5"
+            elif days_left is not None and days_left <= 7:
+                expiry_line = f'<span style="color:#D97706;">Expires {days_left}d</span>'
+                border_color = "#FCD34D"
+                bg_color = "#FFFBEB"
+            else:
+                expiry_line = f"Expires {days_left}d" if days_left else "No expiry"
+                border_color = "#E5E7EB"
+                bg_color = "#FFFFFF"
 
-        pts_pill    = f'<span style="background:#FEF3C7; color:#92400E; font-size:0.72rem; font-weight:700; padding:2px 8px; border-radius:99px;">{tier:,} pts</span>'
-        score_pct   = min(score, 100)
+            # Clipped badge
+            clipped_bottom = (
+                '<span style="color:#16A34A; font-size:0.75rem; font-weight:700;">✓ Clipped</span>'
+            ) if clipped else ""
 
-        card_col, btn_col = st.columns([5, 1])
-        with card_col:
-            st.html(f"""
-            <div class="offer-card">
-                <div style="display:flex; gap:14px; align-items:flex-start;">
+            # Points cost badge (bottom-left alongside clipped)
+            pts_badge = f'<span style="background:#FEF3C7; color:#92400E; font-size:0.7rem; font-weight:700; padding:2px 7px; border-radius:99px; margin-right:4px;">{tier:,} pts</span>'
 
-                    <!-- Category icon block -->
-                    <div style="min-width:48px; height:48px; background:#FEF3C7; border-radius:12px;
-                                display:flex; align-items:center; justify-content:center;
-                                font-size:1.6rem; flex-shrink:0;">
-                        {icon}
+            with grid_cols[col_idx]:
+                st.html(f"""
+                <div style="border:1.5px solid {border_color}; border-radius:12px;
+                            padding:15px 15px 12px; background:{bg_color};
+                            box-shadow:0 1px 6px rgba(0,0,0,0.07);
+                            display:flex; flex-direction:column; min-height:210px;">
+
+                    <!-- GR badge + discount value -->
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:11px;">
+                        <span style="background:#D97706; color:white; font-size:0.58rem;
+                                     font-weight:800; padding:2px 6px; border-radius:4px;
+                                     letter-spacing:0.03em; flex-shrink:0;">Reward</span>
+                        <span style="color:#1a56db; font-weight:800; font-size:1.05rem; flex:1;">
+                            {disc_label}
+                        </span>
                     </div>
 
-                    <!-- Main content -->
-                    <div style="flex:1; min-width:0;">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
-                            <div>
-                                <span class="offer-rank">#{idx}</span>&nbsp;
-                                <span class="offer-name">{row['offer_dsc']}</span>
+                    <!-- Product info + category image -->
+                    <div style="display:flex; gap:10px; align-items:flex-start; flex:1;">
+                        <div style="flex:1; min-width:0;">
+                            <div style="font-weight:700; font-size:0.9rem; color:#111827;
+                                        margin-bottom:3px; line-height:1.35;
+                                        overflow:hidden; display:-webkit-box;
+                                        -webkit-line-clamp:2; -webkit-box-orient:vertical;">
+                                {row['offer_dsc']}
                             </div>
-                            <!-- Discount badge -->
-                            <span style="color:{disc_color}; font-weight:800; font-size:1.15rem;
-                                         white-space:nowrap; flex-shrink:0;">{disc_label}</span>
+                            <div style="font-size:0.78rem; color:#6B7280; margin-bottom:8px;">
+                                {cat_nm}
+                            </div>
+                            <span style="color:#1a56db; font-size:0.78rem; cursor:pointer;">
+                                Offer Details
+                            </span>
                         </div>
-
-                        <!-- Pills row -->
-                        <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
-                            {pts_pill}
-                            {expiry_html}
+                        <div style="flex-shrink:0; width:76px; height:76px; background:#F3F4F6;
+                                    border-radius:8px; display:flex; align-items:center;
+                                    justify-content:center; overflow:hidden;">
+                            {icon}
                         </div>
+                    </div>
 
-                        <!-- Score bar + meta -->
-                        <div style="margin-top:8px;">
-                            <div style="display:flex; justify-content:space-between;
-                                        font-size:0.75rem; color:#94A3B8; margin-bottom:3px;">
-                                <span>{row.get('category','')}</span>
-                                <span>Match score: <b style="color:#475569;">{score:.0f}</b> / 100</span>
-                            </div>
-                            <div style="background:#EEF2F7; border-radius:6px; height:10px;">
-                                <div style="width:{score_pct:.0f}%; height:10px; border-radius:6px;
-                                            background:linear-gradient(90deg,#F59E0B,#D97706);"></div>
-                            </div>
+                    <!-- Divider -->
+                    <div style="border-top:1px solid #E5E7EB; margin:10px 0 8px;"></div>
+
+                    <!-- Points cost + expiry -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; min-height:28px;">
+                        <div>{pts_badge}{clipped_bottom}</div>
+                        <div style="text-align:right; font-size:0.7rem; color:#9CA3AF; line-height:1.5;">
+                            Single use<br/>{expiry_line}
                         </div>
                     </div>
                 </div>
-            </div>
-            """)
-        with btn_col:
-            st.markdown("<div style='margin-top:18px;'></div>", unsafe_allow_html=True)
-            st.button(f"Use {tier} pts", key=f"gr_ranked_{hid}_{row['client_offer_id']}",
-                      use_container_width=True, type="primary",
-                      on_click=clip_offer_local, args=(hid, row["client_offer_id"], True, tier))
+                """)
+                if clipped:
+                    st.button("Unclip", key=f"gr_unclip_{hid}_{offer_id}", use_container_width=True)
+                else:
+                    st.button(f"Use {tier:,} pts", key=f"gr_ranked_{hid}_{offer_id}",
+                              use_container_width=True, type="primary",
+                              on_click=clip_offer_local, args=(hid, offer_id, True, tier))
 
 
 def render_clipped_offers(hid: str):
@@ -2496,7 +2523,7 @@ def render_allocation_criteria():
 
 DEMO_STEPS = [
     {
-        "tag": "Step 1 of 7",
+        "tag": "Step 1 of 8",
         "title": "The Problem Landscape",
         "narration": (
             "Every Albertsons customer faces similar friction: 500+ offers with minimal personalization. "
@@ -2515,7 +2542,7 @@ DEMO_STEPS = [
         "persona": "both",
     },
     {
-        "tag": "Step 2 of 7",
+        "tag": "Step 2 of 8",
         "title": "Today — 500+ Offers, Some Personalization",
         "narration": (
             "This is what every Albertsons customer sees today. "
@@ -2534,7 +2561,7 @@ DEMO_STEPS = [
         "persona": "business",
     },
     {
-        "tag": "Step 3 of 7",
+        "tag": "Step 3 of 8",
         "title": "The Problem — And Why C360 Already Has the Answer",
         "narration": (
             "Today, every Albertsons customer gets the same weekly offer email — "
@@ -2554,7 +2581,7 @@ DEMO_STEPS = [
         "persona": "business",
     },
     {
-        "tag": "Step 4 of 7",
+        "tag": "Step 4 of 8",
         "title": "Same Catalog. Completely Different Rankings.",
         "narration": (
             "Here's personalisation in action. Two households, same 64-offer catalog — "
@@ -2575,7 +2602,7 @@ DEMO_STEPS = [
         "persona": "business",
     },
     {
-        "tag": "Step 5 of 7",
+        "tag": "Step 5 of 8",
         "title": "The AI Layer — What the Rules Miss",
         "narration": (
             "On top of the rule-based engine, we trained an XGBoost model on C360 redemption history. "
@@ -2595,7 +2622,27 @@ DEMO_STEPS = [
         "persona": "business",
     },
     {
-        "tag": "Step 6 of 7",
+        "tag": "Step 6 of 8",
+        "title": "Rules vs AI — Where It Makes a Real Difference",
+        "narration": (
+            "Here's where the AI earns its place. Two real customers, same offer catalog. "
+            "The rule-based engine ranks by channel fit and discount size — it doesn't know "
+            "Jessica is Vegan or that Stephanie is an Organic shopper. "
+            "The AI learned those patterns from purchase history, and ranks completely differently as a result. "
+            "These aren't edge cases. This is every customer, every week."
+        ),
+        "talking_points": [
+            "Rules rank by offer mechanics — channel match, discount size, points balance",
+            "AI ranks by what this customer will actually redeem — learned from their history",
+            "The diff is the value: offers the customer actually wants, not offers the business thinks they want",
+        ],
+        "customer": None,
+        "highlight": "model_story",
+        "nav_page": "Compare Models",
+        "persona": "business",
+    },
+    {
+        "tag": "Step 7 of 8",
         "title": "What This Unlocks for Albertsons",
         "narration": (
             "SmartOfferEngine adds one new table to C360 — c360_scored_offers. "
@@ -2615,7 +2662,7 @@ DEMO_STEPS = [
         "persona": "business",
     },
     {
-        "tag": "Step 7 of 7",
+        "tag": "Step 8 of 8",
         "title": "The Roadmap — What's Next",
         "narration": (
             "Phase 4 will upgrade the ML models with production C360 data and real redemption signals. "
@@ -3044,6 +3091,161 @@ def render_demo_script():
         if os.path.exists(arch_path):
             st.markdown("")
             st.image(arch_path, use_container_width=True)
+
+    elif highlight == "model_story":
+        # ── Step 6: Rules vs AI — exec-friendly comparison ──────────────────
+        st.html("""
+        <div style="background:linear-gradient(135deg,#EFF6FF,#F5F3FF); border-radius:12px;
+                    padding:14px 20px; margin-bottom:18px; display:flex; align-items:center; gap:12px;">
+            <span style="font-size:1.5rem;">🤔</span>
+            <div>
+                <div style="font-weight:700; color:#1E3A5F; font-size:1rem;">
+                    Same offers. Same customers. Completely different rankings.
+                </div>
+                <div style="font-size:0.85rem; color:#475569; margin-top:2px;">
+                    The AI learns from purchase behaviour — the rules can't.
+                </div>
+            </div>
+        </div>
+        """)
+
+        # ── Jessica Miller ──────────────────────────────────────────────────
+        with st.container():
+            st.html("""
+            <div style="font-size:0.78rem; font-weight:700; text-transform:uppercase;
+                        letter-spacing:0.06em; color:#6B7280; margin-bottom:6px;">
+                Customer 1 — Jessica Miller &nbsp;|&nbsp; Vegan &nbsp;·&nbsp; Produce buyer &nbsp;·&nbsp; Instacart + DoorDash
+            </div>
+            """)
+            col_rb, col_ai = st.columns(2, gap="medium")
+            with col_rb:
+                st.html("""
+                <div style="background:#FEF2F2; border:2px solid #FECACA; border-radius:10px; padding:16px;">
+                    <div style="font-weight:700; color:#991B1B; font-size:0.9rem; margin-bottom:12px;">
+                        📋 Rule-Based Engine
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                        <span style="background:#DC2626; color:white; font-weight:800; font-size:0.8rem;
+                                     width:24px; height:24px; border-radius:50%; display:inline-flex;
+                                     align-items:center; justify-content:center;">#1</span>
+                        <div>
+                            <div style="font-weight:600; font-size:0.88rem; color:#1F2937;">
+                                Save $1 on Dave's Killer Bread
+                            </div>
+                            <div style="font-size:0.77rem; color:#6B7280;">
+                                High redemption rate · Good channel match
+                            </div>
+                        </div>
+                    </div>
+                    <div style="font-size:0.82rem; color:#7F1D1D; background:#FEE2E2;
+                                border-radius:8px; padding:8px 10px; margin-top:6px;">
+                        ⚠️ Doesn't know she's Vegan. Doesn't know she buys Produce weekly.
+                        Scores by offer mechanics, not customer behaviour.
+                    </div>
+                </div>
+                """)
+            with col_ai:
+                st.html("""
+                <div style="background:#F0FDF4; border:2px solid #86EFAC; border-radius:10px; padding:16px;">
+                    <div style="font-weight:700; color:#15803D; font-size:0.9rem; margin-bottom:12px;">
+                        🤖 AI (Propensity Model)
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                        <span style="background:#16A34A; color:white; font-weight:800; font-size:0.8rem;
+                                     width:24px; height:24px; border-radius:50%; display:inline-flex;
+                                     align-items:center; justify-content:center;">#3</span>
+                        <div>
+                            <div style="font-weight:600; font-size:0.88rem; color:#1F2937;">
+                                $1 off any Fresh Vegetable Purchase
+                            </div>
+                            <div style="font-size:0.77rem; color:#6B7280;">
+                                Strong produce affinity · Matches Vegan profile
+                            </div>
+                        </div>
+                    </div>
+                    <div style="font-size:0.82rem; color:#14532D; background:#DCFCE7;
+                                border-radius:8px; padding:8px 10px; margin-top:6px;">
+                        ✅ Learned from her transaction history: she buys produce every week.
+                        Bread drops to #9. Vegetables rise to #3.
+                    </div>
+                </div>
+                """)
+
+        st.html('<div style="margin:16px 0 12px; border-top:1px solid #E5E7EB;"></div>')
+
+        # ── Stephanie White ─────────────────────────────────────────────────
+        with st.container():
+            st.html("""
+            <div style="font-size:0.78rem; font-weight:700; text-transform:uppercase;
+                        letter-spacing:0.06em; color:#6B7280; margin-bottom:6px;">
+                Customer 2 — Stephanie White &nbsp;|&nbsp; Organic shopper &nbsp;·&nbsp; High Churn Risk &nbsp;·&nbsp; Instacart user
+            </div>
+            """)
+            col_rb2, col_ai2 = st.columns(2, gap="medium")
+            with col_rb2:
+                st.html("""
+                <div style="background:#FEF2F2; border:2px solid #FECACA; border-radius:10px; padding:16px;">
+                    <div style="font-weight:700; color:#991B1B; font-size:0.9rem; margin-bottom:12px;">
+                        📋 Rule-Based Engine
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                        <span style="background:#DC2626; color:white; font-weight:800; font-size:0.8rem;
+                                     width:24px; height:24px; border-radius:50%; display:inline-flex;
+                                     align-items:center; justify-content:center;">#1</span>
+                        <div>
+                            <div style="font-weight:600; font-size:0.88rem; color:#1F2937;">
+                                Save $2 on Coca-Cola 12 Pack
+                            </div>
+                            <div style="font-size:0.77rem; color:#6B7280;">
+                                Top redemption rate · Channel match
+                            </div>
+                        </div>
+                    </div>
+                    <div style="font-size:0.82rem; color:#7F1D1D; background:#FEE2E2;
+                                border-radius:8px; padding:8px 10px; margin-top:6px;">
+                        ⚠️ Doesn't know she's an Organic buyer with no soft-drink history.
+                        Broad rule — wrong person.
+                    </div>
+                </div>
+                """)
+            with col_ai2:
+                st.html("""
+                <div style="background:#F0FDF4; border:2px solid #86EFAC; border-radius:10px; padding:16px;">
+                    <div style="font-weight:700; color:#15803D; font-size:0.9rem; margin-bottom:12px;">
+                        🤖 AI (Propensity Model)
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                        <span style="background:#16A34A; color:white; font-weight:800; font-size:0.8rem;
+                                     width:24px; height:24px; border-radius:50%; display:inline-flex;
+                                     align-items:center; justify-content:center;">#2</span>
+                        <div>
+                            <div style="font-weight:600; font-size:0.88rem; color:#1F2937;">
+                                $2 off Beef Sirloin per lb
+                            </div>
+                            <div style="font-size:0.77rem; color:#6B7280;">
+                                High-value offer · Instacart affinity · Category match
+                            </div>
+                        </div>
+                    </div>
+                    <div style="font-size:0.82rem; color:#14532D; background:#DCFCE7;
+                                border-radius:8px; padding:8px 10px; margin-top:6px;">
+                        ✅ Coca-Cola drops to #10. AI finds a high-value offer that fits her
+                        Organic + Instacart profile — far more likely to redeem.
+                    </div>
+                </div>
+                """)
+
+        st.html("""
+        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px;
+                    padding:14px 18px; margin-top:18px; display:flex; align-items:center; gap:12px;">
+            <span style="font-size:1.4rem;">💡</span>
+            <div style="font-size:0.88rem; color:#374151; line-height:1.6;">
+                <strong>The business impact:</strong> Every misranked offer is a missed redemption.
+                At Albertsons scale — millions of customers, weekly offer cycles —
+                closing that gap drives measurable lift in basket size and loyalty engagement.
+            </div>
+        </div>
+        """)
 
 
 # ─── PAGE: PROBLEM EXPLORATION ────────────────────────────────────────────────
