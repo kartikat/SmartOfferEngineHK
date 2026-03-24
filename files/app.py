@@ -974,7 +974,7 @@ def page_dashboard():
 
         _customer_options = ["My Offers", "My Rewards", "My Clipped Offers", "My Profile"]
         _analyst_only_options = ["Problem Exploration", "Segment Explorer", "Compare Customers", "Compare Models",
-                                 "Feature Weight Studio", "Feature Engineer", "How Offers Are Scored", "Demo Script"]
+                                 "Feature Weight Studio", "Feature Engineer", "How Offers Are Scored", "Offer Management", "Demo Script"]
         _current_nav = st.session_state.get("nav_page", "My Offers")
 
         if st.session_state.persona == "customer":
@@ -1081,6 +1081,8 @@ def page_dashboard():
             render_allocation_criteria()
         elif nav == "Feature Engineer":
             render_feature_engineer()
+        elif nav == "Offer Management":
+            render_oms()
         elif nav == "Demo Script":
             render_demo_script()
         elif nav == "Problem Exploration":
@@ -3785,6 +3787,345 @@ def render_feature_engineer():
 
 
 # ─── ROUTER ───────────────────────────────────────────────────────────────────
+
+# ─── OMS — OFFER MANAGEMENT SYSTEM ───────────────────────────────────────────
+
+def _oms_load_offers() -> pd.DataFrame:
+    """Load all non-deleted offers for the OMS manage tab."""
+    with _engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT client_offer_id, offer_dsc, delivery_channel_cd, program_type,
+                   discount_type_cd, discount_value, start_dt, end_dt,
+                   offer_status_cd, is_appliable_to_j4u_ind, is_freshpass_offer_ind,
+                   tier_1_points_threshold, target_level_cd,
+                   dw_create_ts
+            FROM c360_offer
+            WHERE dw_logical_delete_ind = FALSE
+            ORDER BY dw_create_ts DESC
+        """)).fetchall()
+        cols = ["client_offer_id", "offer_dsc", "delivery_channel_cd", "program_type",
+                "discount_type_cd", "discount_value", "start_dt", "end_dt",
+                "offer_status_cd", "is_appliable_to_j4u_ind", "is_freshpass_offer_ind",
+                "tier_1_points_threshold", "target_level_cd", "dw_create_ts"]
+        return pd.DataFrame(rows, columns=cols)
+
+
+def _oms_create_offer(fields: dict) -> str:
+    """Insert a new offer row; returns the generated client_offer_id."""
+    import uuid as _uuid
+    from datetime import datetime as _dt
+
+    client_offer_id = f"OFR-OMS-{str(_uuid.uuid4())[:8].upper()}"
+    oms_offer_id    = f"OMS-{str(_uuid.uuid4())[:8].upper()}"
+    now = _dt.now()
+
+    with _engine.connect() as conn:
+        conn.execute(text("""
+            INSERT INTO c360_offer (
+                client_offer_id, oms_offer_id, offer_dsc, title_dsc1,
+                headline_txt, description_txt, categories_txt,
+                start_dt, end_dt, display_start_dt, display_end_dt,
+                offer_type, delivery_channel_cd, program_type, program_subtype,
+                discount_type_cd, discount_value, min_purch_qty, min_purch_amt,
+                target_level_cd, is_appliable_to_j4u_ind, is_freshpass_offer_ind,
+                tier_1_points_threshold, is_in_weekly_ad, offer_status_cd,
+                dw_create_ts, dw_last_update_ts,
+                dw_logical_delete_ind, dw_current_version_ind
+            ) VALUES (
+                :client_offer_id, :oms_offer_id, :offer_dsc, :title_dsc1,
+                :headline_txt, :description_txt, :categories_txt,
+                :start_dt, :end_dt, :start_dt, :end_dt,
+                :offer_type, :delivery_channel_cd, :program_type, :program_subtype,
+                :discount_type_cd, :discount_value, :min_purch_qty, :min_purch_amt,
+                :target_level_cd, :is_appliable_to_j4u_ind, :is_freshpass_offer_ind,
+                :tier_1_points_threshold, :is_in_weekly_ad, :offer_status_cd,
+                :now, :now, FALSE, TRUE
+            )
+        """), {"client_offer_id": client_offer_id, "oms_offer_id": oms_offer_id, "now": now, **fields})
+        conn.commit()
+    return client_offer_id
+
+
+def _oms_update_offer(client_offer_id: str, fields: dict):
+    """Update mutable fields on an existing offer."""
+    from datetime import datetime as _dt
+    fields["dw_last_update_ts"] = _dt.now()
+    fields["oid"] = client_offer_id
+    set_clause = ", ".join(f"{k} = :{k}" for k in fields if k != "oid")
+    with _engine.connect() as conn:
+        conn.execute(text(f"UPDATE c360_offer SET {set_clause} WHERE client_offer_id = :oid"), fields)
+        conn.commit()
+
+
+def _oms_deactivate_offer(client_offer_id: str):
+    """Soft-delete: mark offer as INACTIVE."""
+    from datetime import datetime as _dt
+    with _engine.connect() as conn:
+        conn.execute(text("""
+            UPDATE c360_offer
+            SET offer_status_cd = 'INACTIVE', dw_logical_delete_ind = TRUE,
+                dw_last_update_ts = :now
+            WHERE client_offer_id = :oid
+        """), {"oid": client_offer_id, "now": _dt.now()})
+        conn.commit()
+
+
+def render_oms():
+    st.subheader("Offer Management System (OMS)")
+    st.caption("Create, edit, and deactivate offers in the catalog. Changes take effect after re-scoring.")
+
+    tab_create, tab_manage = st.tabs(["➕ Create Offer", "📋 Manage Offers"])
+
+    # ── CREATE ──────────────────────────────────────────────────────────────
+    with tab_create:
+        st.markdown("### New Offer")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            offer_dsc = st.text_input("Offer Description *", placeholder="e.g. $2 Off Cheerios 18 oz")
+            program_type = st.selectbox("Program Type *", ["Club Card", "J4U", "Grocery Reward"])
+            delivery_channel_cd = st.selectbox("Delivery Channel *", ["J4U", "Weekly Ad", "Auto Clip"])
+            discount_type_cd = st.selectbox("Discount Type *", [
+                "AMT_OFF", "PCT_OFF", "GROCERY_REWARD", "DEPT_REWARD",
+                "FREE_ITEM", "FUEL_CENTS", "POINTS_MULTIPLIER", "FREE_DELIVERY"
+            ])
+            _gr_types = {"GROCERY_REWARD", "DEPT_REWARD", "FREE_ITEM"}
+            if discount_type_cd in _gr_types:
+                st.info("🎁 This type appears in **My Rewards** (points-based). Set a Points Threshold below.")
+            else:
+                st.info("🏷️ This type appears in **My Offers** (standard ranked list).")
+            discount_value = st.number_input("Discount Value ($)", min_value=0.0, step=0.25, value=1.0)
+            target_level_cd = st.selectbox("Target Level", ["ITEM", "CATEGORY", "BASKET"])
+
+        with col2:
+            from datetime import date as _date
+            start_dt = st.date_input("Start Date *", value=_date.today())
+            end_dt   = st.date_input("End Date *",   value=_date.today().replace(day=28))
+            program_subtype = st.text_input("Program Subtype", placeholder="e.g. Department, Free Item (GR only)")
+            categories_txt  = st.text_input("Category", placeholder="e.g. Dairy Eggs Cheese")
+            min_purch_qty   = st.number_input("Min Purchase Qty", min_value=0, step=1, value=1)
+
+        st.markdown("#### Targeting")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            is_appliable_to_j4u_ind  = st.checkbox("4U+ Exclusive (J4U only)")
+        with c2:
+            is_freshpass_offer_ind   = st.checkbox("FreshPass Only")
+        with c3:
+            is_in_weekly_ad          = st.checkbox("In Weekly Ad")
+
+        tier_pts = None
+        if program_type == "Grocery Reward":
+            tier_pts = st.selectbox("Points Threshold (GR tier)",
+                                    [100, 200, 300, 400, 500, 700, 1000, 1200])
+
+        st.markdown("#### Optional Details")
+        title_dsc1      = st.text_input("Title", placeholder="e.g. Club Card Price")
+        headline_txt    = st.text_input("Headline", placeholder="e.g. $2.00 off when you buy 1")
+        description_txt = st.text_area("Description", height=80)
+
+        st.markdown("---")
+        if st.button("🚀 Create Offer", type="primary"):
+            if not offer_dsc.strip():
+                st.error("Offer description is required.")
+            elif end_dt <= start_dt:
+                st.error("End date must be after start date.")
+            else:
+                try:
+                    cid = _oms_create_offer({
+                        "offer_dsc":              offer_dsc.strip(),
+                        "title_dsc1":             title_dsc1 or None,
+                        "headline_txt":           headline_txt or None,
+                        "description_txt":        description_txt or None,
+                        "categories_txt":         categories_txt or None,
+                        "start_dt":               str(start_dt),
+                        "end_dt":                 str(end_dt),
+                        "offer_type":             "ITEM_DISCOUNT",
+                        "delivery_channel_cd":    delivery_channel_cd,
+                        "program_type":           program_type,
+                        "program_subtype":        program_subtype or None,
+                        "discount_type_cd":       discount_type_cd,
+                        "discount_value":         discount_value,
+                        "min_purch_qty":          min_purch_qty if min_purch_qty > 0 else None,
+                        "min_purch_amt":          None,
+                        "target_level_cd":        target_level_cd,
+                        "is_appliable_to_j4u_ind": is_appliable_to_j4u_ind,
+                        "is_freshpass_offer_ind": is_freshpass_offer_ind,
+                        "tier_1_points_threshold": tier_pts,
+                        "is_in_weekly_ad":        is_in_weekly_ad,
+                        "offer_status_cd":        "ACTIVE",
+                    })
+                    st.success(f"✅ Offer created: **{cid}**")
+                    st.session_state["oms_last_created"] = cid
+                except Exception as e:
+                    st.error(f"❌ Failed to create offer: {e}")
+
+        if st.session_state.get("oms_last_created"):
+            st.markdown("---")
+            st.markdown("#### Score Now")
+            st.caption("Re-run the scoring engines so this offer appears in customer rankings.")
+            col_rb, col_ml = st.columns(2)
+            with col_rb:
+                if st.button("⚡ Run Rule-Based Scoring", use_container_width=True):
+                    import subprocess
+                    env = os.environ.copy()
+                    env["DATABASE_URL"] = DB_URL
+                    env["DYLD_LIBRARY_PATH"] = os.path.expanduser("~/lib") + ":" + env.get("DYLD_LIBRARY_PATH", "")
+                    scoring_path = os.path.join(os.path.dirname(__file__), "engine", "scoring.py")
+                    with st.spinner("Scoring all households…"):
+                        result = subprocess.run([sys.executable, scoring_path], capture_output=True, text=True, timeout=60, env=env)
+                    if result.returncode == 0:
+                        load_scored.clear()
+                        st.success("✅ Rule-based scores updated. Switch to My Offers to see rankings.")
+                    else:
+                        st.error(f"❌ Scoring failed: {result.stderr[-500:]}")
+            with col_ml:
+                if st.button("🤖 Run Propensity Scoring", use_container_width=True):
+                    import subprocess
+                    env = os.environ.copy()
+                    env["DATABASE_URL"] = DB_URL
+                    env["DYLD_LIBRARY_PATH"] = os.path.expanduser("~/lib") + ":" + env.get("DYLD_LIBRARY_PATH", "")
+                    ml_path = os.path.join(os.path.dirname(__file__), "engine", "scoring_ml.py")
+                    with st.spinner("Running propensity models…"):
+                        result = subprocess.run([sys.executable, ml_path], capture_output=True, text=True, timeout=120, env=env)
+                    if result.returncode == 0:
+                        load_scored.clear()
+                        st.success("✅ Propensity scores updated. Switch to My Offers to see rankings.")
+                    else:
+                        st.error(f"❌ Scoring failed: {result.stderr[-500:]}")
+
+    # ── MANAGE ──────────────────────────────────────────────────────────────
+    with tab_manage:
+        st.markdown("### All Offers")
+
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            status_filter = st.selectbox("Filter by Status", ["All", "ACTIVE", "INACTIVE"])
+        with col_f2:
+            pt_filter = st.selectbox("Filter by Program Type", ["All", "Club Card", "J4U", "Grocery Reward"])
+
+        df = _oms_load_offers()
+        if status_filter != "All":
+            df = df[df["offer_status_cd"] == status_filter]
+        if pt_filter != "All":
+            df = df[df["program_type"] == pt_filter]
+
+        search = st.text_input("Search offers", placeholder="Type to filter by description or ID")
+        if search:
+            mask = (
+                df["offer_dsc"].str.contains(search, case=False, na=False) |
+                df["client_offer_id"].str.contains(search, case=False, na=False)
+            )
+            df = df[mask]
+
+        st.caption(f"{len(df)} offer(s) shown")
+
+        if df.empty:
+            st.info("No offers match the current filters.")
+        else:
+            display_df = df[["client_offer_id", "offer_dsc", "program_type",
+                              "discount_type_cd", "discount_value",
+                              "start_dt", "end_dt", "offer_status_cd"]].copy()
+            display_df.columns = ["ID", "Description", "Program", "Discount Type",
+                                   "Value ($)", "Start", "End", "Status"]
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+            st.markdown("---")
+            st.markdown("### Edit or Deactivate an Offer")
+
+            offer_labels = {f"{r['client_offer_id']} — {r['offer_dsc'][:50]}": r['client_offer_id']
+                            for _, r in df.iterrows()}
+            chosen_label = st.selectbox("Select offer", list(offer_labels.keys()))
+            chosen_id    = offer_labels[chosen_label]
+            chosen_row   = df[df["client_offer_id"] == chosen_id].iloc[0]
+
+            edit_col, del_col = st.columns([3, 1])
+
+            with edit_col:
+                with st.expander("✏️ Edit this offer"):
+                    e_dsc      = st.text_input("Description",       value=chosen_row["offer_dsc"],            key="e_dsc")
+                    e_channel  = st.selectbox("Delivery Channel",   ["J4U", "Weekly Ad", "Auto Clip"],
+                                              index=["J4U", "Weekly Ad", "Auto Clip"].index(chosen_row["delivery_channel_cd"])
+                                                    if chosen_row["delivery_channel_cd"] in ["J4U", "Weekly Ad", "Auto Clip"] else 0,
+                                              key="e_chan")
+                    e_discount = st.number_input("Discount Value ($)", value=float(chosen_row["discount_value"] or 0),
+                                                 min_value=0.0, step=0.25, key="e_disc")
+                    from datetime import date as _date2
+                    e_end      = st.date_input("End Date", value=chosen_row["end_dt"], key="e_end")
+                    e_status   = st.selectbox("Status", ["ACTIVE", "INACTIVE"],
+                                             index=0 if chosen_row["offer_status_cd"] == "ACTIVE" else 1,
+                                             key="e_status")
+
+                    if st.button("💾 Save Changes", key="save_edit"):
+                        try:
+                            _oms_update_offer(chosen_id, {
+                                "offer_dsc":          e_dsc.strip(),
+                                "delivery_channel_cd": e_channel,
+                                "discount_value":     e_discount,
+                                "end_dt":             str(e_end),
+                                "offer_status_cd":    e_status,
+                            })
+                            st.success(f"✅ Offer **{chosen_id}** updated.")
+                            st.rerun()
+                        except Exception as ex:
+                            st.error(f"❌ {ex}")
+
+            with del_col:
+                st.markdown("&nbsp;")
+                if chosen_row["offer_status_cd"] == "ACTIVE":
+                    if st.button("🗑 Deactivate", type="secondary", key="deactivate_btn"):
+                        st.session_state["confirm_deactivate"] = chosen_id
+
+            if st.session_state.get("confirm_deactivate") == chosen_id:
+                st.warning(f"Are you sure you want to deactivate **{chosen_id}**?")
+                c_yes, c_no = st.columns(2)
+                with c_yes:
+                    if st.button("Yes, deactivate", type="primary"):
+                        try:
+                            _oms_deactivate_offer(chosen_id)
+                            st.success(f"✅ Offer **{chosen_id}** deactivated.")
+                            st.session_state.pop("confirm_deactivate", None)
+                            st.rerun()
+                        except Exception as ex:
+                            st.error(f"❌ {ex}")
+                with c_no:
+                    if st.button("Cancel"):
+                        st.session_state.pop("confirm_deactivate", None)
+                        st.rerun()
+
+        st.markdown("---")
+        st.markdown("#### Score Now")
+        st.caption("Re-run scoring engines after edits so changes appear in customer rankings.")
+        col_rb2, col_ml2 = st.columns(2)
+        with col_rb2:
+            if st.button("⚡ Run Rule-Based Scoring", use_container_width=True, key="manage_score_rb"):
+                import subprocess
+                env = os.environ.copy()
+                env["DATABASE_URL"] = DB_URL
+                env["DYLD_LIBRARY_PATH"] = os.path.expanduser("~/lib") + ":" + env.get("DYLD_LIBRARY_PATH", "")
+                scoring_path = os.path.join(os.path.dirname(__file__), "engine", "scoring.py")
+                with st.spinner("Scoring all households…"):
+                    result = subprocess.run([sys.executable, scoring_path], capture_output=True, text=True, timeout=60, env=env)
+                if result.returncode == 0:
+                    load_scored.clear()
+                    st.success("✅ Rule-based scores updated.")
+                else:
+                    st.error(f"❌ {result.stderr[-500:]}")
+        with col_ml2:
+            if st.button("🤖 Run Propensity Scoring", use_container_width=True, key="manage_score_ml"):
+                import subprocess
+                env = os.environ.copy()
+                env["DATABASE_URL"] = DB_URL
+                env["DYLD_LIBRARY_PATH"] = os.path.expanduser("~/lib") + ":" + env.get("DYLD_LIBRARY_PATH", "")
+                ml_path = os.path.join(os.path.dirname(__file__), "engine", "scoring_ml.py")
+                with st.spinner("Running propensity models…"):
+                    result = subprocess.run([sys.executable, ml_path], capture_output=True, text=True, timeout=120, env=env)
+                if result.returncode == 0:
+                    load_scored.clear()
+                    st.success("✅ Propensity scores updated.")
+                else:
+                    st.error(f"❌ {result.stderr[-500:]}")
+
 
 if st.session_state.page == "login":
     page_login()
